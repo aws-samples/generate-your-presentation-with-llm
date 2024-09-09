@@ -1,0 +1,20 @@
+[tool.poetry]
+name = "pptx-generator"
+version = "0.0.1"
+description = "pptx-generator"
+authors = ["Luca Perrozzi <lperroz@amazon.ch>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = ">=3.9,<3.9.7 || >3.9.7,<4.0.0"
+streamlit = "1.38.0"
+boto3 = "1.34.58"
+botocore = "1.34.58"
+python-pptx = "^0.6.22"
+unoconv = "0.9.0"
+pillow = "^10.3"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
