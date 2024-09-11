@@ -30,6 +30,9 @@ This application leverages Generative AI on AWS to create presentations with tex
 <img src="./tmp/generate-your-presentation-with-llm-example.png">
 
 ## Installation
+
+### Infrastructure setup
+
 - Pick a region, e.g. `us-east-1`
 
 - [Launch an EC2 instance](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-launch-instance-wizard.html#liw-quickly-launch-instance) with Amazon Linux OS with a Key pair for login (t2.medium is enough, increase the disk size to 50GB)
@@ -66,6 +69,8 @@ and [attach it to the EC2 instance](https://docs.aws.amazon.com/AWSEC2/latest/Us
     - Launch an [Application Load Balancer](https://docs.aws.amazon.com/elasticloadbalancing/latest/application/application-load-balancer-getting-started.html) with a dedicated Security group opened to receive traffic from the internet
     - Add an [HTTPS listener](https://docs.aws.amazon.com/elasticloadbalancing/latest/application/create-https-listener.html) on the port `8001` of the Load Balancer which will be used to launch the application (change it accordingly if another port is used below), pointing to the target group containing the EC2 instance
     - Open the port `8001` of the EC2 Security Group port to accept traffic from the Load Balancer Security Group
+
+### Application setup
 
 - [Login into the EC2 via SSH](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/connect-linux-inst-ssh.html) and update the system packages 
 ```
