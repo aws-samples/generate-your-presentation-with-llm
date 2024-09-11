@@ -100,7 +100,7 @@ if not st.session_state.get("your_full_name"):
 if not st.session_state.get("your_contact_info"):
     st.session_state["your_contact_info"] = "j.doe@anycompany.com"
 if not st.session_state.get("your_title"):
-    st.session_state["your_title"] = "Chief Powerpoint Officer"
+    st.session_state["your_title"] = "Chief Presentation Officer"
 if not st.session_state.get("your_company"):
     st.session_state["your_company"] = "AnyCompany"
 
