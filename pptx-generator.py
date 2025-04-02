@@ -223,18 +223,13 @@ if st.button('Generate presentation', key="create_presentation"):
             st.session_state["n_input_tokens"] = st.session_state["n_input_tokens"] + usage['input_tokens']
             st.session_state["n_output_tokens"] = st.session_state["n_output_tokens"] + usage['output_tokens']
 
-            if len(text_gen_result) != 1:
-                st.write("There was a problem with the answer from Claude, try again")
-                sys.exit()
-
-            print("RAW RESULT:")
-            print(text_gen_result)
-
-            raw_generated_json = text_gen_result[0]["text"]
-            print("MANIPULATION ATTEMPT RESULT:")
-            print("RAW GENERATED JSON:",raw_generated_json)
-
-            is_valid_json_content = is_valid_text_gen_json(raw_json=raw_generated_json)
+            # We're using the Converse API implementation
+            json_content_list = text_gen_result
+            generated_n_slides = len(json_content_list)
+            generated_n_slides_is_consistent = (generated_n_slides == st.session_state["N_SLIDES"])
+            
+            print("Generated slides content:")
+            print(json_content_list)
             print("is_valid_json_content",is_valid_json_content)
 
             gen_result_fix_attempts = 0
@@ -255,23 +250,8 @@ if st.button('Generate presentation', key="create_presentation"):
                     st.warning('Generated slides JSON contains bugs, fixing it...', icon="🚨")
             
             st.session_state["valid_generation"] = True
-            try:
-                validated_json_content = ast.literal_eval(raw_generated_json)
-            except ValueError:
-                try:
-                    # print("TRYING WITH: ",(raw_generated_json+"\"}]}"))
-                    # bad hack to try to force valid json in case of truncation
-                    validated_json_content = ast.literal_eval(raw_generated_json+"\"}]}")
-                except ValueError:
-                    st.error('Errors encountered in the generation, please try again', icon="🚨")
-                    st.session_state["valid_generation"] = False
             
-            print(type(validated_json_content))
-            json_content_list = validated_json_content["slides"]
-            print("Generated slides content:")
-            print(json_content_list)
-
-            generated_n_slides, generated_n_slides_is_consistent = check_text_generation_consistency(slides_list=json_content_list, N_SLIDES=st.session_state["N_SLIDES"])
+            # We already have the json_content_list from the Converse API
             generation_attempts = generation_attempts+1
             if not generated_n_slides_is_consistent:
                 st.warning("INCONSISTENT NUMBER OF SLIDES! "+str(st.session_state["N_SLIDES"])+" requested, "+str(generated_n_slides)+" generated", icon="🚨")

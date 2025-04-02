@@ -1,25 +1,45 @@
 # Generate your presentation with LLMs on Amazon Bedrock
 
-This application leverages Generative AI on AWS to create presentations with text, images and professional layout.
-### Key features:
-- Leverages Amazon Bedrock service with Claude 3 and Amazon Titan Image Generator models
-- Provides prompt moderation against harmful or violent content
-- Entirely written in python, leverages [python-pptx](https://pypi.org/project/python-pptx/) library for backend and [Streamlit](https://pypi.org/project/streamlit/) for frontend
-- Creates arbitrary combination of layouts through mapping of base template 
-- Handles output content in JSON format
-- Self-heals against formatting and output errors
-- Generates agenda and thank you slides
-- Generates slide thumbnails through slides rendering via OpenOffice integration
-- Adds contact information
-- Customizable number of slides
-- Computes elapsed time, number of input and output tokens, presentation generation cost
+This application generates professional PowerPoint presentations using Amazon Bedrock ConverseAPI and tool calling. It takes a topic from the user and automatically creates a structured presentation with customizable slides, images, and formatting.
 
-### How to use:
+## Features
 
-- Add topic to the text input area
-- Select options on model, pictures, thumbnails, etc
-- Click "Generate"
-- Download the generated presentation
+- Generate complete presentations from a simple topic description
+- Customize contact information and company details
+- Generate background images and slide images using Amazon Titan Image Generator
+- Support for multiple slide layouts and formats
+- Automatic generation of agenda and thank you slides
+- Slide thumbnails preview rendering via OpenOffice integration
+- Cost estimation for token usage and image generation
+
+## Technical Implementation
+
+The application uses:
+
+- Amazon Bedrock's Claude 3 models (Haiku or Sonnet) for text generation
+- Amazon Titan Image Generator for creating custom images
+- [python-pptx](https://pypi.org/project/python-pptx/) for PowerPoint file manipulation
+- [Streamlit](https://pypi.org/project/streamlit/) for the user interface
+
+## Recent Updates
+
+The application has been refactored to use a more efficient approach for generating slide content. Instead of using invoke_model, now it leverage the Bedrock Converse API with function calling to generate well-formatted JSON responses.
+
+This approach:
+1. Provides better control over the output format
+2. Ensures consistent slide generation
+3. Maintains compatibility with all Claude 3 models
+4. Improves error handling and validation
+
+## Usage
+
+1. Enter your presentation topic
+2. Select the number of slides
+3. Choose whether to include agenda and thank you slides
+4. Optionally generate custom background and slide images
+5. Customize your contact information
+6. Click "Generate presentation" to create your PowerPoint file
+7. Download the generated presentation
 
 ### Look and feel
 
@@ -29,9 +49,16 @@ This application leverages Generative AI on AWS to create presentations with tex
 - Output example
 <img src="./tmp/generate-your-presentation-with-llm-example.png">
 
+
 ## Installation
 
-### Infrastructure setup
+### Requirements
+
+- Python 3.8+
+- AWS credentials with access to Amazon Bedrock
+- Required Python packages (see pyproject.toml)
+
+### Infrastructure setup via EC2
 
 - Pick a region, e.g. `us-east-1`
 
@@ -153,3 +180,7 @@ streamlit run pptx-generator.py --server.enableCORS true --server.port 8001 --br
 
 
 - login to the public page with the provided credentials (default is user: `admin`)
+
+## License
+
+This project is licensed under the MIT License - see the LICENSE file for details.

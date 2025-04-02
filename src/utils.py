@@ -86,47 +86,6 @@ def validate_slide_json(slide_json={}):
     return True
 
 
-
-def generate_text(prompt="", N_SLIDES=1, model_id = "anthropic.claude-3-sonnet-20240229-v1:0"):
-    # Invoke Claude 3 with the text prompt
-    # model_id = "anthropic.claude-3-sonnet-20240229-v1:0"
-
-    try:
-        max_tokens = int(4096/15*N_SLIDES)
-        print("Max tokens: ",max_tokens)
-        response = bedrock_client.invoke_model(modelId=model_id,body=json.dumps(
-                {"anthropic_version": "bedrock-2023-05-31",
-                    "max_tokens": max_tokens,
-                    "messages": [
-                        {"role": "user",
-                            "content": [{"type": "text", "text": prompt}],}
-                    ], } ),
-        )
-
-        # Process and print the response
-        result = json.loads(response.get("body").read())
-        input_tokens = result["usage"]["input_tokens"]
-        output_tokens = result["usage"]["output_tokens"]
-        output_list = result.get("content", [])
-
-        print("Invocation details:")
-        print(f"- The input length is {input_tokens} tokens.")
-        print(f"- The output length is {output_tokens} tokens.")
-        print(f"- The model returned {len(output_list)} response(s):")
-        # for output in output_list:
-        #     print(output["text"])
-
-    except ClientError as err:
-        print(
-            "Couldn't invoke Claude 3 Sonnet. Here's why: %s: %s",
-            err.response["Error"]["Code"],
-            err.response["Error"]["Message"],
-        )
-        raise
-    
-    return result.get("content", []), result.get('usage', [])
-
-
 def check_text_generation_consistency(slides_list=[],N_SLIDES=1):
     print("len(slides_list)",len(slides_list), "N_SLIDES",N_SLIDES)
     # print("slides_list",slides_list)
@@ -183,8 +142,6 @@ def generate_image(model_id, body):
 
     print("Successfully generated image with Amazon Titan Image Generator G1 model", model_id)
     return image_bytes
-
-
 
 
 def check_password(app_name: str):
@@ -249,3 +206,171 @@ def check_password(app_name: str):
         return True
 
 
+def get_slide_generation_schema():
+    # Define the schema for slide generation
+    schema_json = {
+        "type": "object",
+        "properties": {
+            "slides": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "slide_n": {"type": "integer", "description": "Slide number"},
+                        "title": {"type": "string", "description": "Slide title"},
+                        "subtitle": {"type": "string", "description": "Slide subtitle"},
+                        "text": {"type": "string", "description": "Main slide content"},
+                        "speaker_notes": {"type": "string", "description": "Speaker notes for the slide"},
+                        "slideFormat": {"type": "string", "description": "Layout format for the slide"}
+                    },
+                    "required": ["slide_n", "title", "subtitle", "text", "speaker_notes", "slideFormat"]
+                }
+            }
+        },
+        "required": ["slides"]
+    }
+    
+    return {
+        "toolSpec": {
+            "name": "generate_presentation_slides",
+            "description": "Generate structured presentation slides based on a topic",
+            "inputSchema": {
+                "json": schema_json
+            }
+        }
+    }
+
+def generate_text(prompt="", N_SLIDES=1, model_id="anthropic.claude-3-sonnet-20240229-v1:0"):
+    """
+    Generate presentation slides using the traditional invoke_model approach instead of Converse API
+    since we're having issues with the Converse API implementation.
+    """
+    try:
+        max_tokens = int(4096/15*N_SLIDES)
+        print("Max tokens: ", max_tokens)
+        
+        # Create a prompt that will generate the slides in the required format
+        full_prompt = f"""You are a presentation creation assistant. Generate a well-structured presentation about "{prompt}" with {N_SLIDES} slides.
+
+For each slide, provide the following information in a JSON format:
+1. slide_n: The slide number (integer)
+2. title: A concise, informative title for the slide
+3. subtitle: A subtitle or brief description
+4. text: The main content of the slide (use *** to separate bullet points)
+5. speaker_notes: Notes for the presenter
+6. slideFormat: Choose one of the following formats:
+   - "Title page" (for the first slide)
+   - "Slide with bullet points"
+   - "Slide with image and text"
+   - "Slide with image only"
+   - "Slide with 4 takeaways" (for the last slide)
+
+Return your response as a valid JSON array of slide objects. Do not include any explanations or text outside the JSON structure.
+
+Example format:
+```json
+[
+  {{
+    "slide_n": 1,
+    "title": "Introduction to AWS",
+    "subtitle": "Cloud Computing Solutions",
+    "text": "Welcome to this presentation about AWS",
+    "speaker_notes": "Introduce yourself and the topic",
+    "slideFormat": "Title page"
+  }},
+  {{
+    "slide_n": 2,
+    "title": "Key Benefits",
+    "subtitle": "Why choose AWS?",
+    "text": "*** Scalability\\n*** Cost-effectiveness\\n*** Global infrastructure\\n*** Security",
+    "speaker_notes": "Emphasize the cost savings and scalability",
+    "slideFormat": "Slide with bullet points"
+  }}
+]
+```
+
+Now, create a presentation with {N_SLIDES} slides about "{prompt}":"""
+
+        # Use the standard invoke_model approach
+        response = bedrock_client.invoke_model(
+            modelId=model_id,
+            body=json.dumps({
+                "anthropic_version": "bedrock-2023-05-31",
+                "max_tokens": max_tokens,
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": [{"type": "text", "text": full_prompt}]
+                    }
+                ]
+            })
+        )
+        
+        # Process the response
+        result = json.loads(response.get("body").read())
+        response_text = result.get("content", [{}])[0].get("text", "")
+        
+        # Extract the JSON part from the response
+        json_start = response_text.find("[")
+        json_end = response_text.rfind("]") + 1
+        
+        if json_start >= 0 and json_end > json_start:
+            json_text = response_text[json_start:json_end]
+            slides = json.loads(json_text)
+        else:
+            # If we can't find proper JSON brackets, try to parse the whole response
+            slides = json.loads(response_text)
+        
+        # Get usage information
+        usage = {
+            "input_tokens": result.get("usage", {}).get("input_tokens", 0),
+            "output_tokens": result.get("usage", {}).get("output_tokens", 0)
+        }
+        
+        return slides, usage
+
+    except ClientError as err:
+        print(
+            "Couldn't invoke Bedrock model. Here's why: %s: %s",
+            err.response["Error"]["Code"],
+            err.response["Error"]["Message"],
+        )
+        raise
+    except json.JSONDecodeError as err:
+        print(f"Error parsing JSON response: {err}")
+        print(f"Response text: {response_text}")
+        raise
+
+def validate_slides_response(slides):
+    schema = {
+        "type": "array",
+        "items": {
+            "type": "object",
+            "properties": {
+                "slide_n": {"type": ["integer", "number"]},
+                "title": {"type": "string"},
+                "subtitle": {"type": "string"},
+                "text": {"type": "string"},
+                "speaker_notes": {"type": "string"},
+                "slideFormat": {"type": "string"}
+            },
+            "required": ["slide_n", "title", "subtitle", "text", "speaker_notes", "slideFormat"]
+        }
+    }
+    
+    try:
+        validate(instance=slides, schema=schema)
+        return True
+    except jsonschema.exceptions.ValidationError as err:
+        print("Validation error:", err)
+        return False
+
+def generate_presentation(topic, n_slides):
+    prompt = topic
+    
+    slides, usage = generate_text(prompt=prompt, N_SLIDES=n_slides)
+    
+    if not validate_slides_response(slides):
+        raise ValueError("Generated slides failed validation")
+        
+    return slides
