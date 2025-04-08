@@ -207,8 +207,12 @@ def check_password(app_name: str):
 
 
 def get_slide_generation_schema():
+    """
+    Define the schema for slide generation using the Bedrock Converse API.
+    Returns the tool configuration in the format expected by the API.
+    """
     # Define the schema for slide generation
-    schema_json = {
+    schema = {
         "type": "object",
         "properties": {
             "slides": {
@@ -230,14 +234,19 @@ def get_slide_generation_schema():
         "required": ["slides"]
     }
     
+    # Return the tool configuration in the format expected by the Converse API
     return {
-        "toolSpec": {
-            "name": "generate_presentation_slides",
-            "description": "Generate structured presentation slides based on a topic",
-            "inputSchema": {
-                "json": schema_json
+        "tools": [
+            {
+                "toolSpec": {
+                    "name": "generate_presentation_slides",
+                    "description": "Generate structured presentation slides based on a topic",
+                    "inputSchema": {
+                        "json": schema
+                    }
+                }
             }
-        }
+        ]
     }
 
 def generate_text(prompt="", N_SLIDES=1, model_id="anthropic.claude-3-sonnet-20240229-v1:0"):
@@ -273,7 +282,7 @@ Use the generate_presentation_slides tool to create the presentation.
             modelId=model_id,
             messages=[{
                 "role": "user",
-                "content": [{"type": "text", "text": full_prompt}]
+                "content": full_prompt
             }],
             toolConfig=tool_config
         )
@@ -282,9 +291,10 @@ Use the generate_presentation_slides tool to create the presentation.
         slides = []
         for message in response.get("messages", []):
             if message.get("role") == "assistant":
-                for content in message.get("content", []):
-                    if content.get("type") == "tool_use":
-                        tool_use = content.get("tool_use", {})
+                content_list = message.get("content", [])
+                for content in content_list:
+                    if isinstance(content, dict) and content.get("toolUse"):
+                        tool_use = content.get("toolUse", {})
                         if tool_use.get("name") == "generate_presentation_slides":
                             slides = tool_use.get("input", {}).get("slides", [])
                             break

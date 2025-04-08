@@ -1,51 +1,61 @@
+#!/usr/bin/env python3
 """
-Simple test script to verify the Bedrock Converse API function calling works correctly
+Test script to verify the Bedrock Converse API function calling implementation
+for presentation generation.
 """
-import json
-from src.utils import generate_text, validate_slides_response, get_slide_generation_schema
 
-def test_function_calling():
+import json
+import boto3
+from src.utils import generate_text, get_slide_generation_schema, validate_slides_response
+
+def main():
+    """
+    Test the generate_text function with Converse API and function calling.
+    """
+    print("Testing presentation generation with Bedrock Converse API and function calling...")
+    
     # Test topic and number of slides
-    topic = "Benefits of cloud computing with Amazon Web Services"
-    n_slides = 5
+    topic = "Introduction to AWS Cloud Services"
+    n_slides = 3
     
-    # Create a simple prompt
-    prompt = f"{topic}"
+    print(f"Generating a presentation about '{topic}' with {n_slides} slides...")
     
-    print(f"Testing Bedrock Converse API function calling with topic: {topic}")
-    print(f"Using schema: {json.dumps(get_slide_generation_schema(), indent=2)}")
+    # Test with Claude 3 Haiku (faster for testing)
+    model_id = "anthropic.claude-3-haiku-20240307-v1:0"
     
-    # Call the generate_text function with function calling
     try:
-        slides, usage = generate_text(prompt=prompt, N_SLIDES=n_slides)
+        # Generate slides using the updated function
+        slides, usage = generate_text(prompt=topic, N_SLIDES=n_slides, model_id=model_id)
         
         # Print usage information
-        print(f"\nUsage information:")
-        print(f"- Input tokens: {usage.get('input_tokens', 'N/A')}")
-        print(f"- Output tokens: {usage.get('output_tokens', 'N/A')}")
+        print(f"\nUsage Information:")
+        print(f"Input tokens: {usage['input_tokens']}")
+        print(f"Output tokens: {usage['output_tokens']}")
         
-        # Validate the response
+        # Validate the slides
         is_valid = validate_slides_response(slides)
-        print(f"\nResponse validation: {'Passed' if is_valid else 'Failed'}")
+        print(f"\nSlides validation result: {'Success' if is_valid else 'Failed'}")
         
         # Print the number of slides generated
-        print(f"\nGenerated {len(slides)} slides:")
+        print(f"Number of slides generated: {len(slides)}")
+        print(f"Number of slides requested: {n_slides}")
         
-        # Print a summary of each slide
-        for i, slide in enumerate(slides):
-            print(f"\nSlide {i+1}: {slide.get('title', 'No title')}")
-            print(f"Format: {slide.get('slideFormat', 'Unknown format')}")
+        # Print the slides in a readable format
+        print("\nGenerated Slides:")
+        for slide in slides:
+            print(f"\n--- Slide {slide['slide_n']} ---")
+            print(f"Title: {slide['title']}")
+            print(f"Subtitle: {slide['subtitle']}")
+            print(f"Format: {slide['slideFormat']}")
+            print(f"Text: {slide['text'][:100]}..." if len(slide['text']) > 100 else f"Text: {slide['text']}")
         
-        # Print the full response for the first slide
-        if slides:
-            print(f"\nExample slide content (first slide):")
-            print(json.dumps(slides[0], indent=2))
-        
-        return slides
+        # Save the slides to a JSON file for inspection
+        with open('test_slides_output.json', 'w') as f:
+            json.dump(slides, f, indent=2)
+        print("\nSlides saved to test_slides_output.json")
         
     except Exception as e:
-        print(f"Error during function calling: {str(e)}")
-        return None
+        print(f"Error during testing: {e}")
 
 if __name__ == "__main__":
-    test_function_calling()
+    main()
