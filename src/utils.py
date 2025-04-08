@@ -282,7 +282,7 @@ Use the generate_presentation_slides tool to create the presentation.
             modelId=model_id,
             messages=[{
                 "role": "user",
-                "content": full_prompt
+                "content": [{"text": full_prompt}]
             }],
             toolConfig=tool_config
         )
