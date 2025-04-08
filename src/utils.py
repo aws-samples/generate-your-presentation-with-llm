@@ -242,17 +242,17 @@ def get_slide_generation_schema():
 
 def generate_text(prompt="", N_SLIDES=1, model_id="anthropic.claude-3-sonnet-20240229-v1:0"):
     """
-    Generate presentation slides using the traditional invoke_model approach instead of Converse API
-    since we're having issues with the Converse API implementation.
+    Generate presentation slides using the Bedrock Converse API with function calling.
+    This provides better control over the output format and ensures consistent slide generation.
     """
     try:
-        max_tokens = int(4096/15*N_SLIDES)
-        print("Max tokens: ", max_tokens)
+        # Get the tool schema for slide generation
+        tool_config = get_slide_generation_schema()
         
-        # Create a prompt that will generate the slides in the required format
+        # Create the conversation message with instructions for slide generation
         full_prompt = f"""You are a presentation creation assistant. Generate a well-structured presentation about "{prompt}" with {N_SLIDES} slides.
 
-For each slide, provide the following information in a JSON format:
+For each slide, provide the following information:
 1. slide_n: The slide number (integer)
 2. title: A concise, informative title for the slide
 3. subtitle: A subtitle or brief description
@@ -265,69 +265,42 @@ For each slide, provide the following information in a JSON format:
    - "Slide with image only"
    - "Slide with 4 takeaways" (for the last slide)
 
-Return your response as a valid JSON array of slide objects. Do not include any explanations or text outside the JSON structure.
-
-Example format:
-```json
-[
-  {{
-    "slide_n": 1,
-    "title": "Introduction to AWS",
-    "subtitle": "Cloud Computing Solutions",
-    "text": "Welcome to this presentation about AWS",
-    "speaker_notes": "Introduce yourself and the topic",
-    "slideFormat": "Title page"
-  }},
-  {{
-    "slide_n": 2,
-    "title": "Key Benefits",
-    "subtitle": "Why choose AWS?",
-    "text": "*** Scalability\\n*** Cost-effectiveness\\n*** Global infrastructure\\n*** Security",
-    "speaker_notes": "Emphasize the cost savings and scalability",
-    "slideFormat": "Slide with bullet points"
-  }}
-]
-```
-
-Now, create a presentation with {N_SLIDES} slides about "{prompt}":"""
-
-        # Use the standard invoke_model approach
-        response = bedrock_client.invoke_model(
+Use the generate_presentation_slides tool to create the presentation.
+"""
+        
+        # Call the Converse API with the tool configuration
+        response = bedrock_client.converse(
             modelId=model_id,
-            body=json.dumps({
-                "anthropic_version": "bedrock-2023-05-31",
-                "max_tokens": max_tokens,
-                "messages": [
-                    {
-                        "role": "user",
-                        "content": [{"type": "text", "text": full_prompt}]
-                    }
-                ]
-            })
+            messages=[{
+                "role": "user",
+                "content": [{"type": "text", "text": full_prompt}]
+            }],
+            toolConfig=tool_config
         )
         
-        # Process the response
-        result = json.loads(response.get("body").read())
-        response_text = result.get("content", [{}])[0].get("text", "")
-        
-        # Extract the JSON part from the response
-        json_start = response_text.find("[")
-        json_end = response_text.rfind("]") + 1
-        
-        if json_start >= 0 and json_end > json_start:
-            json_text = response_text[json_start:json_end]
-            slides = json.loads(json_text)
-        else:
-            # If we can't find proper JSON brackets, try to parse the whole response
-            slides = json.loads(response_text)
+        # Extract the slides from the tool response
+        slides = []
+        for message in response.get("messages", []):
+            if message.get("role") == "assistant":
+                for content in message.get("content", []):
+                    if content.get("type") == "tool_use":
+                        tool_use = content.get("tool_use", {})
+                        if tool_use.get("name") == "generate_presentation_slides":
+                            slides = tool_use.get("input", {}).get("slides", [])
+                            break
         
         # Get usage information
         usage = {
-            "input_tokens": result.get("usage", {}).get("input_tokens", 0),
-            "output_tokens": result.get("usage", {}).get("output_tokens", 0)
+            "input_tokens": response.get("usage", {}).get("inputTokenCount", 0),
+            "output_tokens": response.get("usage", {}).get("outputTokenCount", 0)
         }
         
-        return slides, usage
+        # Validate the slides
+        if slides and validate_slides_response(slides):
+            return slides, usage
+        else:
+            print("Error: Generated slides failed validation or are empty")
+            return [], usage
 
     except ClientError as err:
         print(
@@ -336,9 +309,8 @@ Now, create a presentation with {N_SLIDES} slides about "{prompt}":"""
             err.response["Error"]["Message"],
         )
         raise
-    except json.JSONDecodeError as err:
-        print(f"Error parsing JSON response: {err}")
-        print(f"Response text: {response_text}")
+    except Exception as err:
+        print(f"Error generating slides: {err}")
         raise
 
 def validate_slides_response(slides):
