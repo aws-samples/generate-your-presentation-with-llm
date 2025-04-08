@@ -19,31 +19,47 @@ class ImageError(Exception):
     def __init__(self, message):
         self.message = message
 
-def invoke_llm_text(prompt="", model_id = "anthropic.claude-3-sonnet-20240229-v1:0"):
-    # Initialize the Amazon Bedrock runtime client
-    # Invoke Claude 3 with the text prompt
+def invoke_llm_text(prompt="", model_id="anthropic.claude-3-sonnet-20240229-v1:0"):
+    """
+    Invoke the LLM using Bedrock Converse API for simple text generation tasks.
+    This is used for moderation and agenda generation.
+    """
     try:
-        max_tokens = 512
-        response = bedrock_client.invoke_model(modelId=model_id,body=json.dumps(
-                {"anthropic_version": "bedrock-2023-05-31",
-                    "max_tokens": max_tokens,
-                    "messages": [
-                        {"role": "user",
-                            "content": [{"type": "text", "text": prompt}],}
-                    ], } ),
+        # Call the Converse API for simple text generation
+        response = bedrock_client.converse(
+            modelId=model_id,
+            messages=[{
+                "role": "user",
+                "content": [{"text": prompt}]
+            }]
         )
-        # Process and print the response
-        result = json.loads(response.get("body").read())
+        
+        # Extract the text response
+        result = []
+        if "output" in response and "message" in response["output"]:
+            message = response["output"]["message"]
+            if "content" in message:
+                content_list = message["content"]
+                for content in content_list:
+                    if isinstance(content, dict) and "text" in content:
+                        result.append({"text": content["text"]})
+                        break
+        
+        # Get usage information
+        usage = {
+            "input_tokens": response.get("usage", {}).get("inputTokens", 0),
+            "output_tokens": response.get("usage", {}).get("outputTokens", 0)
+        }
+        
+        return result, usage
 
     except ClientError as err:
         print(
-            "Couldn't invoke Claude 3 Sonnet. Here's why: %s: %s",
+            "Couldn't invoke Bedrock model. Here's why: %s: %s",
             err.response["Error"]["Code"],
             err.response["Error"]["Message"],
         )
         raise
-    
-    return result.get("content", []), result.get('usage', [])
 
 
 def is_valid_text_gen_json(raw_json={}):
@@ -289,20 +305,48 @@ Use the generate_presentation_slides tool to create the presentation.
         
         # Extract the slides from the tool response
         slides = []
-        for message in response.get("messages", []):
-            if message.get("role") == "assistant":
-                content_list = message.get("content", [])
+        
+        # The response structure is different from what we expected
+        # The tool response is in response["output"]["message"]["content"]
+        if "output" in response and "message" in response["output"]:
+            message = response["output"]["message"]
+            if "content" in message:
+                content_list = message["content"]
                 for content in content_list:
-                    if isinstance(content, dict) and content.get("toolUse"):
-                        tool_use = content.get("toolUse", {})
+                    if isinstance(content, dict) and "toolUse" in content:
+                        tool_use = content["toolUse"]
                         if tool_use.get("name") == "generate_presentation_slides":
                             slides = tool_use.get("input", {}).get("slides", [])
                             break
         
         # Get usage information
         usage = {
-            "input_tokens": response.get("usage", {}).get("inputTokenCount", 0),
-            "output_tokens": response.get("usage", {}).get("outputTokenCount", 0)
+            "input_tokens": response.get("usage", {}).get("inputTokens", 0),
+            "output_tokens": response.get("usage", {}).get("outputTokens", 0)
+        }
+        
+        # Validate the slides
+        if slides and validate_slides_response(slides):
+            return slides, usage
+        else:
+            print("Error: Generated slides failed validation or are empty")
+            return [], usage
+
+    except ClientError as err:
+        print(
+            "Couldn't invoke Bedrock model. Here's why: %s: %s",
+            err.response["Error"]["Code"],
+            err.response["Error"]["Message"],
+        )
+        raise
+    except Exception as err:
+        print(f"Error generating slides: {err}")
+        raise
+        
+        # Get usage information
+        usage = {
+            "input_tokens": response.get("usage", {}).get("inputTokens", 0),
+            "output_tokens": response.get("usage", {}).get("outputTokens", 0)
         }
         
         # Validate the slides
