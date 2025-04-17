@@ -130,13 +130,13 @@ inputs_col1, inputs_col2, inputs_col3 = st.columns(3)
 
 with inputs_col1:
         
-    st.session_state["selected_LLM"] = st.selectbox('Choose Language Model', ('Claude 3 Haiku', 'Claude 3 Sonnet'), index=1, key="LLM")
-    if st.session_state["selected_LLM"] == 'Claude 3 Haiku':
-        st.session_state["chosen_LLM"] = "anthropic.claude-3-haiku-20240307-v1:0"
+    st.session_state["selected_LLM"] = st.selectbox('Choose Language Model', ('Claude 3.5 Haiku', 'Claude 3.5 Sonnet'), index=0, key="LLM")
+    if st.session_state["selected_LLM"] == 'Claude 3.5 Haiku':
+        st.session_state["chosen_LLM"] = "us.anthropic.claude-3-5-haiku-20241022-v1:0"
         st.session_state["LLM_input_token_price"] =  0.00025/1e3 # us-east-1
         st.session_state["LLM_output_token_price"] = 0.00125/1e3 # us-east-1
-    elif st.session_state["selected_LLM"] == 'Claude 3 Sonnet':
-        st.session_state["chosen_LLM"] = "anthropic.claude-3-sonnet-20240229-v1:0"
+    elif st.session_state["selected_LLM"] == 'Claude 3.5 Sonnet':
+        st.session_state["chosen_LLM"] = "us.anthropic.claude-3-5-sonnet-20241022-v2:0"
         st.session_state["LLM_input_token_price"] =  0.00300/1e3 # us-east-1
         st.session_state["LLM_output_token_price"] = 0.01500/1e3 # us-east-1
 
@@ -223,18 +223,14 @@ if st.button('Generate presentation', key="create_presentation"):
             st.session_state["n_input_tokens"] = st.session_state["n_input_tokens"] + usage['input_tokens']
             st.session_state["n_output_tokens"] = st.session_state["n_output_tokens"] + usage['output_tokens']
 
-            if len(text_gen_result) != 1:
-                st.write("There was a problem with the answer from Claude, try again")
-                sys.exit()
-
-            print("RAW RESULT:")
-            print(text_gen_result)
-
-            raw_generated_json = text_gen_result[0]["text"]
-            print("MANIPULATION ATTEMPT RESULT:")
-            print("RAW GENERATED JSON:",raw_generated_json)
-
-            is_valid_json_content = is_valid_text_gen_json(raw_json=raw_generated_json)
+            # We're using the Converse API implementation
+            json_content_list = text_gen_result
+            generated_n_slides = len(json_content_list)
+            generated_n_slides_is_consistent = (generated_n_slides == st.session_state["N_SLIDES"])
+            
+            print("Generated slides content:")
+            print(json_content_list)
+            is_valid_json_content = text_gen_result[0]["text"]
             print("is_valid_json_content",is_valid_json_content)
 
             gen_result_fix_attempts = 0
@@ -255,23 +251,8 @@ if st.button('Generate presentation', key="create_presentation"):
                     st.warning('Generated slides JSON contains bugs, fixing it...', icon="🚨")
             
             st.session_state["valid_generation"] = True
-            try:
-                validated_json_content = ast.literal_eval(raw_generated_json)
-            except ValueError:
-                try:
-                    # print("TRYING WITH: ",(raw_generated_json+"\"}]}"))
-                    # bad hack to try to force valid json in case of truncation
-                    validated_json_content = ast.literal_eval(raw_generated_json+"\"}]}")
-                except ValueError:
-                    st.error('Errors encountered in the generation, please try again', icon="🚨")
-                    st.session_state["valid_generation"] = False
             
-            print(type(validated_json_content))
-            json_content_list = validated_json_content["slides"]
-            print("Generated slides content:")
-            print(json_content_list)
-
-            generated_n_slides, generated_n_slides_is_consistent = check_text_generation_consistency(slides_list=json_content_list, N_SLIDES=st.session_state["N_SLIDES"])
+            # We already have the json_content_list from the Converse API
             generation_attempts = generation_attempts+1
             if not generated_n_slides_is_consistent:
                 st.warning("INCONSISTENT NUMBER OF SLIDES! "+str(st.session_state["N_SLIDES"])+" requested, "+str(generated_n_slides)+" generated", icon="🚨")

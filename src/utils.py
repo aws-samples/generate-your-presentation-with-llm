@@ -19,31 +19,47 @@ class ImageError(Exception):
     def __init__(self, message):
         self.message = message
 
-def invoke_llm_text(prompt="", model_id = "anthropic.claude-3-sonnet-20240229-v1:0"):
-    # Initialize the Amazon Bedrock runtime client
-    # Invoke Claude 3 with the text prompt
+def invoke_llm_text(prompt="", model_id="anthropic.claude-3-sonnet-20240229-v1:0"):
+    """
+    Invoke the LLM using Bedrock Converse API for simple text generation tasks.
+    This is used for moderation and agenda generation.
+    """
     try:
-        max_tokens = 512
-        response = bedrock_client.invoke_model(modelId=model_id,body=json.dumps(
-                {"anthropic_version": "bedrock-2023-05-31",
-                    "max_tokens": max_tokens,
-                    "messages": [
-                        {"role": "user",
-                            "content": [{"type": "text", "text": prompt}],}
-                    ], } ),
+        # Call the Converse API for simple text generation
+        response = bedrock_client.converse(
+            modelId=model_id,
+            messages=[{
+                "role": "user",
+                "content": [{"text": prompt}]
+            }]
         )
-        # Process and print the response
-        result = json.loads(response.get("body").read())
+        
+        # Extract the text response
+        result = []
+        if "output" in response and "message" in response["output"]:
+            message = response["output"]["message"]
+            if "content" in message:
+                content_list = message["content"]
+                for content in content_list:
+                    if isinstance(content, dict) and "text" in content:
+                        result.append({"text": content["text"]})
+                        break
+        
+        # Get usage information
+        usage = {
+            "input_tokens": response.get("usage", {}).get("inputTokens", 0),
+            "output_tokens": response.get("usage", {}).get("outputTokens", 0)
+        }
+        
+        return result, usage
 
     except ClientError as err:
         print(
-            "Couldn't invoke Claude 3 Sonnet. Here's why: %s: %s",
+            "Couldn't invoke Bedrock model. Here's why: %s: %s",
             err.response["Error"]["Code"],
             err.response["Error"]["Message"],
         )
         raise
-    
-    return result.get("content", []), result.get('usage', [])
 
 
 def is_valid_text_gen_json(raw_json={}):
@@ -84,47 +100,6 @@ def validate_slide_json(slide_json={}):
         print("SLIDE JSON VALIDATE ERROR UNKNOWN")
         return False
     return True
-
-
-
-def generate_text(prompt="", N_SLIDES=1, model_id = "anthropic.claude-3-sonnet-20240229-v1:0"):
-    # Invoke Claude 3 with the text prompt
-    # model_id = "anthropic.claude-3-sonnet-20240229-v1:0"
-
-    try:
-        max_tokens = int(4096/15*N_SLIDES)
-        print("Max tokens: ",max_tokens)
-        response = bedrock_client.invoke_model(modelId=model_id,body=json.dumps(
-                {"anthropic_version": "bedrock-2023-05-31",
-                    "max_tokens": max_tokens,
-                    "messages": [
-                        {"role": "user",
-                            "content": [{"type": "text", "text": prompt}],}
-                    ], } ),
-        )
-
-        # Process and print the response
-        result = json.loads(response.get("body").read())
-        input_tokens = result["usage"]["input_tokens"]
-        output_tokens = result["usage"]["output_tokens"]
-        output_list = result.get("content", [])
-
-        print("Invocation details:")
-        print(f"- The input length is {input_tokens} tokens.")
-        print(f"- The output length is {output_tokens} tokens.")
-        print(f"- The model returned {len(output_list)} response(s):")
-        # for output in output_list:
-        #     print(output["text"])
-
-    except ClientError as err:
-        print(
-            "Couldn't invoke Claude 3 Sonnet. Here's why: %s: %s",
-            err.response["Error"]["Code"],
-            err.response["Error"]["Message"],
-        )
-        raise
-    
-    return result.get("content", []), result.get('usage', [])
 
 
 def check_text_generation_consistency(slides_list=[],N_SLIDES=1):
@@ -183,8 +158,6 @@ def generate_image(model_id, body):
 
     print("Successfully generated image with Amazon Titan Image Generator G1 model", model_id)
     return image_bytes
-
-
 
 
 def check_password(app_name: str):
@@ -249,3 +222,181 @@ def check_password(app_name: str):
         return True
 
 
+def get_slide_generation_schema():
+    """
+    Define the schema for slide generation using the Bedrock Converse API.
+    Returns the tool configuration in the format expected by the API.
+    """
+    # Define the schema for slide generation
+    schema = {
+        "type": "object",
+        "properties": {
+            "slides": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "slide_n": {"type": "integer", "description": "Slide number"},
+                        "title": {"type": "string", "description": "Slide title"},
+                        "subtitle": {"type": "string", "description": "Slide subtitle"},
+                        "text": {"type": "string", "description": "Main slide content"},
+                        "speaker_notes": {"type": "string", "description": "Speaker notes for the slide"},
+                        "slideFormat": {"type": "string", "description": "Layout format for the slide"}
+                    },
+                    "required": ["slide_n", "title", "subtitle", "text", "speaker_notes", "slideFormat"]
+                }
+            }
+        },
+        "required": ["slides"]
+    }
+    
+    # Return the tool configuration in the format expected by the Converse API
+    return {
+        "tools": [
+            {
+                "toolSpec": {
+                    "name": "generate_presentation_slides",
+                    "description": "Generate structured presentation slides based on a topic",
+                    "inputSchema": {
+                        "json": schema
+                    }
+                }
+            }
+        ]
+    }
+
+def generate_text(prompt="", N_SLIDES=1, model_id="anthropic.claude-3-sonnet-20240229-v1:0"):
+    """
+    Generate presentation slides using the Bedrock Converse API with function calling.
+    This provides better control over the output format and ensures consistent slide generation.
+    """
+    try:
+        # Get the tool schema for slide generation
+        tool_config = get_slide_generation_schema()
+        
+        # Create the conversation message with instructions for slide generation
+        full_prompt = f"""You are a presentation creation assistant. Generate a well-structured presentation about "{prompt}" with {N_SLIDES} slides.
+
+For each slide, provide the following information:
+1. slide_n: The slide number (integer)
+2. title: A concise, informative title for the slide
+3. subtitle: A subtitle or brief description
+4. text: The main content of the slide (use *** to separate bullet points)
+5. speaker_notes: Notes for the presenter
+6. slideFormat: Choose one of the following formats:
+   - "Title page" (for the first slide)
+   - "Slide with bullet points"
+   - "Slide with image and text"
+   - "Slide with image only"
+   - "Slide with 4 takeaways" (for the last slide)
+
+Use the generate_presentation_slides tool to create the presentation.
+"""
+        
+        # Call the Converse API with the tool configuration
+        response = bedrock_client.converse(
+            modelId=model_id,
+            messages=[{
+                "role": "user",
+                "content": [{"text": full_prompt}]
+            }],
+            toolConfig=tool_config
+        )
+        
+        # Extract the slides from the tool response
+        slides = []
+        
+        # The response structure is different from what we expected
+        # The tool response is in response["output"]["message"]["content"]
+        if "output" in response and "message" in response["output"]:
+            message = response["output"]["message"]
+            if "content" in message:
+                content_list = message["content"]
+                for content in content_list:
+                    if isinstance(content, dict) and "toolUse" in content:
+                        tool_use = content["toolUse"]
+                        if tool_use.get("name") == "generate_presentation_slides":
+                            slides = tool_use.get("input", {}).get("slides", [])
+                            break
+        
+        # Get usage information
+        usage = {
+            "input_tokens": response.get("usage", {}).get("inputTokens", 0),
+            "output_tokens": response.get("usage", {}).get("outputTokens", 0)
+        }
+        
+        # Validate the slides
+        if slides and validate_slides_response(slides):
+            return slides, usage
+        else:
+            print("Error: Generated slides failed validation or are empty")
+            return [], usage
+
+    except ClientError as err:
+        print(
+            "Couldn't invoke Bedrock model. Here's why: %s: %s",
+            err.response["Error"]["Code"],
+            err.response["Error"]["Message"],
+        )
+        raise
+    except Exception as err:
+        print(f"Error generating slides: {err}")
+        raise
+        
+        # Get usage information
+        usage = {
+            "input_tokens": response.get("usage", {}).get("inputTokens", 0),
+            "output_tokens": response.get("usage", {}).get("outputTokens", 0)
+        }
+        
+        # Validate the slides
+        if slides and validate_slides_response(slides):
+            return slides, usage
+        else:
+            print("Error: Generated slides failed validation or are empty")
+            return [], usage
+
+    except ClientError as err:
+        print(
+            "Couldn't invoke Bedrock model. Here's why: %s: %s",
+            err.response["Error"]["Code"],
+            err.response["Error"]["Message"],
+        )
+        raise
+    except Exception as err:
+        print(f"Error generating slides: {err}")
+        raise
+
+def validate_slides_response(slides):
+    schema = {
+        "type": "array",
+        "items": {
+            "type": "object",
+            "properties": {
+                "slide_n": {"type": ["integer", "number"]},
+                "title": {"type": "string"},
+                "subtitle": {"type": "string"},
+                "text": {"type": "string"},
+                "speaker_notes": {"type": "string"},
+                "slideFormat": {"type": "string"}
+            },
+            "required": ["slide_n", "title", "subtitle", "text", "speaker_notes", "slideFormat"]
+        }
+    }
+    
+    try:
+        validate(instance=slides, schema=schema)
+        return True
+    except jsonschema.exceptions.ValidationError as err:
+        print("Validation error:", err)
+        return False
+
+def generate_presentation(topic, n_slides):
+    prompt = topic
+    
+    slides, usage = generate_text(prompt=prompt, N_SLIDES=n_slides)
+    
+    if not validate_slides_response(slides):
+        raise ValueError("Generated slides failed validation")
+        
+    return slides
