@@ -230,7 +230,7 @@ if st.button('Generate presentation', key="create_presentation"):
             
             print("Generated slides content:")
             print(json_content_list)
-            is_valid_json_content = True
+            is_valid_json_content = text_gen_result[0]["text"]
             print("is_valid_json_content",is_valid_json_content)
 
             gen_result_fix_attempts = 0
