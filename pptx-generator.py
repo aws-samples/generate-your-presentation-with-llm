@@ -130,13 +130,13 @@ inputs_col1, inputs_col2, inputs_col3 = st.columns(3)
 
 with inputs_col1:
         
-    st.session_state["selected_LLM"] = st.selectbox('Choose Language Model', ('Claude 3 Haiku', 'Claude 3 Sonnet'), index=1, key="LLM")
-    if st.session_state["selected_LLM"] == 'Claude 3 Haiku':
-        st.session_state["chosen_LLM"] = "anthropic.claude-3-haiku-20240307-v1:0"
+    st.session_state["selected_LLM"] = st.selectbox('Choose Language Model', ('Claude 3.5 Haiku', 'Claude 3.5 Sonnet'), index=0, key="LLM")
+    if st.session_state["selected_LLM"] == 'Claude 3.5 Haiku':
+        st.session_state["chosen_LLM"] = "us.anthropic.claude-3-5-haiku-20241022-v1:0"
         st.session_state["LLM_input_token_price"] =  0.00025/1e3 # us-east-1
         st.session_state["LLM_output_token_price"] = 0.00125/1e3 # us-east-1
-    elif st.session_state["selected_LLM"] == 'Claude 3 Sonnet':
-        st.session_state["chosen_LLM"] = "anthropic.claude-3-sonnet-20240229-v1:0"
+    elif st.session_state["selected_LLM"] == 'Claude 3.5 Sonnet':
+        st.session_state["chosen_LLM"] = "us.anthropic.claude-3-5-sonnet-20241022-v2:0"
         st.session_state["LLM_input_token_price"] =  0.00300/1e3 # us-east-1
         st.session_state["LLM_output_token_price"] = 0.01500/1e3 # us-east-1
 
@@ -230,6 +230,7 @@ if st.button('Generate presentation', key="create_presentation"):
             
             print("Generated slides content:")
             print(json_content_list)
+            is_valid_json_content = True
             print("is_valid_json_content",is_valid_json_content)
 
             gen_result_fix_attempts = 0
