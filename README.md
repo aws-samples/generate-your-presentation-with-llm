@@ -6,7 +6,7 @@ This application generates professional PowerPoint presentations using Amazon Be
 
 - Generate complete presentations from a simple topic description
 - Customize contact information and company details
-- Generate background images and slide images using Amazon Titan Image Generator
+- Generate background images and slide images using Amazon Nova Canvas
 - Support for multiple slide layouts and formats
 - Automatic generation of agenda and thank you slides
 - Slide thumbnails preview rendering via OpenOffice integration
@@ -16,8 +16,8 @@ This application generates professional PowerPoint presentations using Amazon Be
 
 The application uses:
 
-- Amazon Bedrock's Claude 3 models (Haiku or Sonnet) for text generation
-- Amazon Titan Image Generator for creating custom images
+- Amazon Bedrock's Claude 3.5 models (Haiku or Sonnet) and Amazon Nova models (Pro or Lite) for text generation
+- Amazon Nova Canvas for creating custom images
 - [python-pptx](https://pypi.org/project/python-pptx/) for PowerPoint file manipulation
 - [Streamlit](https://pypi.org/project/streamlit/) for the user interface
 
@@ -28,7 +28,7 @@ The application has been refactored to use a more efficient approach for generat
 This approach:
 1. Provides better control over the output format
 2. Ensures consistent slide generation
-3. Maintains compatibility with all Claude 3 models
+3. Maintains compatibility with all Claude 3.5 and Amazon Nova models
 4. Improves error handling and validation
 
 ## Usage
@@ -79,16 +79,18 @@ This approach:
                 "bedrock:InvokeModel",
                 "bedrock:InvokeModelWithResponseStream"
             ],
-            "Resource": ["arn:aws:bedrock:us-east-1::foundation-model/anthropic.claude-3-sonnet-20240229-v1:0",
-                        "arn:aws:bedrock:us-east-1::foundation-model/anthropic.claude-3-haiku-20240307-v1:0",
-                        "arn:aws:bedrock:us-east-1::foundation-model/amazon.titan-image-generator-v1"]
+            "Resource": ["arn:aws:bedrock:us-east-1::foundation-model/us.anthropic.claude-3-5-sonnet-20241022-v2:0",
+                        "arn:aws:bedrock:us-east-1::foundation-model/us.anthropic.claude-3-5-haiku-20241022-v1:0",
+                        "arn:aws:bedrock:us-east-1::foundation-model/us.amazon.nova-pro-v1:0",
+                        "arn:aws:bedrock:us-east-1::foundation-model/us.amazon.nova-lite-v1:0",
+                        "arn:aws:bedrock:us-east-1::foundation-model/amazon.nova-canvas-v1:0"]
         }
     ]
 }
 ```
 and [attach it to the EC2 instance](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/iam-roles-for-amazon-ec2.html#attach-iam-role).
 
-- Enable the Claude 3 models in the [Amazon Bedrock console](https://docs.aws.amazon.com/bedrock/latest/userguide/model-access.html)
+- Enable the Claude 3.5 and Amazon Nova models in the [Amazon Bedrock console](https://docs.aws.amazon.com/bedrock/latest/userguide/model-access.html)
     - Consider enabling [model invocation logging](https://docs.aws.amazon.com/bedrock/latest/userguide/model-invocation-logging.html) and set alerts to ensure adherence to any responsible AI policies.	Model invocation logging is disabled by default.
 
 

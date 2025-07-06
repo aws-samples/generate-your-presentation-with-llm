@@ -9,16 +9,70 @@ import streamlit as st
 import jsonschema
 from jsonschema import validate
 import ast
+import re
+import time
+import random
 
 # Initialize the Amazon Bedrock runtime client
 bedrock_client = boto3.client(service_name="bedrock-runtime", region_name="us-east-1")
 
 class ImageError(Exception):
-    "Custom exception for errors returned by Amazon Titan Image Generator G1"
+    "Custom exception for errors returned by Amazon Nova Canvas"
 
     def __init__(self, message):
         self.message = message
 
+
+def retry_with_exponential_backoff(max_retries=3, base_delay=1, max_delay=60, backoff_factor=2):
+    """
+    Decorator that implements exponential backoff retry mechanism for handling throttling and transient errors.
+    
+    Args:
+        max_retries (int): Maximum number of retry attempts
+        base_delay (float): Initial delay in seconds
+        max_delay (float): Maximum delay in seconds
+        backoff_factor (float): Multiplier for delay between retries
+    """
+    def decorator(func):
+        def wrapper(*args, **kwargs):
+            last_exception = None
+            
+            for attempt in range(max_retries + 1):
+                try:
+                    return func(*args, **kwargs)
+                except ClientError as e:
+                    error_code = e.response.get('Error', {}).get('Code', '')
+                    
+                    # Check if it's a retryable error
+                    if error_code in ['ThrottlingException', 'ServiceUnavailableException', 'InternalServerException']:
+                        last_exception = e
+                        
+                        if attempt < max_retries:
+                            # Calculate delay with jitter
+                            delay = min(base_delay * (backoff_factor ** attempt), max_delay)
+                            jitter = random.uniform(0, delay * 0.1)  # Add up to 10% jitter
+                            total_delay = delay + jitter
+                            
+                            print(f"Attempt {attempt + 1} failed with {error_code}. Retrying in {total_delay:.2f} seconds...")
+                            time.sleep(total_delay)
+                        else:
+                            print(f"Max retries ({max_retries}) exceeded for {error_code}")
+                            raise e
+                    else:
+                        # Non-retryable error, raise immediately
+                        raise e
+                except Exception as e:
+                    # Non-ClientError exceptions are not retried
+                    raise e
+            
+            # If we get here, all retries were exhausted
+            if last_exception:
+                raise last_exception
+                
+        return wrapper
+    return decorator
+
+@retry_with_exponential_backoff(max_retries=3, base_delay=1, max_delay=60)
 def invoke_llm_text(prompt="", model_id="anthropic.claude-3-sonnet-20240229-v1:0"):
     """
     Invoke the LLM using Bedrock Converse API for simple text generation tasks.
@@ -62,6 +116,9 @@ def invoke_llm_text(prompt="", model_id="anthropic.claude-3-sonnet-20240229-v1:0
         raise
 
 
+
+
+
 def is_valid_text_gen_json(raw_json={}):
     
     def validateJSON(jsonData):
@@ -89,7 +146,9 @@ def validate_slide_json(slide_json={}):
         "required": ["slide_n", "title", "subtitle", "text", "speaker_notes", "slideFormat"]
         }
     try:
-        slide_json = ast.literal_eval(str(slide_json))
+        # Ensure slide_json is a dictionary
+        if isinstance(slide_json, str):
+            slide_json = json.loads(slide_json)
         # print("!!!!!!!!! slide_json",type(slide_json),slide_json)
         print("expected_schema",expected_schema["properties"].keys(),"slide_json",slide_json.keys())
         validate(instance=slide_json, schema=expected_schema)
@@ -107,15 +166,20 @@ def check_text_generation_consistency(slides_list=[],N_SLIDES=1):
     # print("slides_list",slides_list)
     return len(slides_list), len(slides_list) == N_SLIDES
 
+@retry_with_exponential_backoff(max_retries=3, base_delay=1, max_delay=60)
 def generate_bedrock_image(img_prompt="", current_slide_format_json={}, image_placeholder=None, cwd="", bkg=""):
-    model_id = 'amazon.titan-image-generator-v1'
-    body = json.dumps({"taskType": "TEXT_IMAGE","textToImageParams": {
+    model_id = 'amazon.nova-canvas-v1:0'
+    body = json.dumps({
+        "taskType": "TEXT_IMAGE",
+        "textToImageParams": {
             "text": img_prompt
         },
-        "imageGenerationConfig": {"numberOfImages": 1,
+        "imageGenerationConfig": {
+            "numberOfImages": 1,
             "height": current_slide_format_json["image_height"], 
             "width": current_slide_format_json["image_width"],
-            "cfgScale": 8.0, "seed": np.random.randint(0, int(1e9))
+            "cfgScale": 8.0, 
+            "seed": np.random.randint(0, int(1e9))
         }
     })
 
@@ -133,11 +197,11 @@ def generate_bedrock_image(img_prompt="", current_slide_format_json={}, image_pl
         print(err.message)
         print(err.message)
     else:
-        print(f"Finished generating image with Amazon Titan Image Generator G1 model {model_id}.")
+        print(f"Finished generating image with Amazon Nova Canvas model {model_id}.")
 
 
 def generate_image(model_id, body):
-    print("Generating image with Amazon Titan Image Generator G1 model", model_id)
+    print("Generating image with Amazon Nova Canvas model", model_id)
 
     accept = "application/json"
     content_type = "application/json"
@@ -156,7 +220,7 @@ def generate_image(model_id, body):
     if finish_reason is not None:
         raise ImageError(f"Image generation error. Error is {finish_reason}")
 
-    print("Successfully generated image with Amazon Titan Image Generator G1 model", model_id)
+    print("Successfully generated image with Amazon Nova Canvas model", model_id)
     return image_bytes
 
 
@@ -265,6 +329,7 @@ def get_slide_generation_schema():
         ]
     }
 
+@retry_with_exponential_backoff(max_retries=3, base_delay=1, max_delay=60)
 def generate_text(prompt="", N_SLIDES=1, model_id="anthropic.claude-3-sonnet-20240229-v1:0"):
     """
     Generate presentation slides using the Bedrock Converse API with function calling.

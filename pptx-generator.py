@@ -82,9 +82,9 @@ st.markdown(
                 """, unsafe_allow_html=True
             )
 
-if not check_password("PPTX generator App"):
-    # need to login first
-    st.stop()
+# if not check_password("PPTX generator App"):
+    # # need to login first
+    # st.stop()
 
 # MAIN PAGE        
 st.title('Generate your presentation with Amazon Bedrock!')
@@ -130,7 +130,7 @@ inputs_col1, inputs_col2, inputs_col3 = st.columns(3)
 
 with inputs_col1:
         
-    st.session_state["selected_LLM"] = st.selectbox('Choose Language Model', ('Claude 3.5 Haiku', 'Claude 3.5 Sonnet'), index=0, key="LLM")
+    st.session_state["selected_LLM"] = st.selectbox('Choose Language Model', ('Claude 3.5 Haiku', 'Claude 3.5 Sonnet', 'Amazon Nova Pro', 'Amazon Nova Lite'), index=0, key="LLM")
     if st.session_state["selected_LLM"] == 'Claude 3.5 Haiku':
         st.session_state["chosen_LLM"] = "us.anthropic.claude-3-5-haiku-20241022-v1:0"
         st.session_state["LLM_input_token_price"] =  0.00025/1e3 # us-east-1
@@ -139,6 +139,14 @@ with inputs_col1:
         st.session_state["chosen_LLM"] = "us.anthropic.claude-3-5-sonnet-20241022-v2:0"
         st.session_state["LLM_input_token_price"] =  0.00300/1e3 # us-east-1
         st.session_state["LLM_output_token_price"] = 0.01500/1e3 # us-east-1
+    elif st.session_state["selected_LLM"] == 'Amazon Nova Pro':
+        st.session_state["chosen_LLM"] = "us.amazon.nova-pro-v1:0"
+        st.session_state["LLM_input_token_price"] =  0.00080/1e3 # us-east-1
+        st.session_state["LLM_output_token_price"] = 0.00320/1e3 # us-east-1
+    elif st.session_state["selected_LLM"] == 'Amazon Nova Lite':
+        st.session_state["chosen_LLM"] = "us.amazon.nova-lite-v1:0"
+        st.session_state["LLM_input_token_price"] =  0.00006/1e3 # us-east-1
+        st.session_state["LLM_output_token_price"] = 0.00024/1e3 # us-east-1
 
     st.session_state["TOPIC"] = st.text_area("Insert your topic of choice", st.session_state["TOPIC_FROM_TEXT"], key="topic")
     st.session_state["N_SLIDES"] = st.slider("Preferred number of slides", min_value=5, max_value=15, value=6, step=1, format="%i", key="slides")
@@ -200,8 +208,9 @@ if st.button('Generate presentation', key="create_presentation"):
     st.session_state["n_output_tokens"] = st.session_state["n_output_tokens"] + usage['output_tokens']
     
     try:
-        st.session_state["content_allowed"] = ast.literal_eval( (moderate_request_response[0])["text"] )["content_allowed"]
-    except ValueError:
+        # Use response text directly
+        st.session_state["content_allowed"] = json.loads((moderate_request_response[0])["text"])["content_allowed"]
+    except (ValueError, json.JSONDecodeError):
         # need to implement proper retry
         print("content_allowed ERROR, skipping")
         
@@ -294,7 +303,8 @@ if st.button('Generate presentation', key="create_presentation"):
                     is_valid_json_slide = validate_slide_json(slide_json=raw_generated_slide_json)
                     print("attempt",slide_json_fix_attempts,"is_valid_json_slide",is_valid_json_slide)
                     if is_valid_json_slide:
-                        json_slide = ast.literal_eval(raw_generated_slide_json)
+                        # Use response text directly
+                        json_slide = json.loads(raw_generated_slide_json)
 
                 json_content_list[i_json_slide] = json_slide
 
@@ -454,8 +464,9 @@ if st.button('Generate presentation', key="create_presentation"):
                             st.session_state["n_input_tokens"] = st.session_state["n_input_tokens"] + usage['input_tokens']
                             st.session_state["n_output_tokens"] = st.session_state["n_output_tokens"] + usage['output_tokens']
                             try:
-                                agenda_items = ast.literal_eval( (result_agenda_items[0])["text"] )["agenda_points"]
-                            except ValueError:
+                                # Use response text directly
+                                agenda_items = json.loads((result_agenda_items[0])["text"])["agenda_points"]
+                            except (ValueError, json.JSONDecodeError):
                                 print("FAILED TO GENERATE AGENDA")
                                 agenda_items = []
 
