@@ -64,15 +64,40 @@ def example_json():
 """
 
 def create_initial_prompt(N_SLIDES=1, TOPIC=""):
-    prompt="""Your task is to propose a """+str(N_SLIDES)+""" slide presentation on the topic: 
-"""+TOPIC+""". 
+    prompt="""Your task is to create a comprehensive """+str(N_SLIDES)+""" slide presentation based on the following content and context:
 
-The presentation should follow these requirements:
-- Use only the following slide formats: Title page, Slide with bullet points, Slide with image and
-text, Slide with image only, Slide with 4 takeaways
+"""+TOPIC+"""
+
+INSTRUCTIONS:
+- Analyze the provided content thoroughly to understand the key themes, concepts, and structure
+- The content above may include:
+  * Detailed notes and explanations
+  * Research findings or data points
+  * Multiple topics or subtopics
+  * Background context and supporting information
+  * Specific examples, case studies, or anecdotes
+  * Technical details or specifications
+- Extract the most important and relevant information to create a coherent presentation flow
+- Organize the content logically, building from foundational concepts to more advanced topics
+- Ensure each slide has a clear purpose and contributes to the overall narrative
+- Use the provided information as your primary source, but feel free to structure and present it in the most effective way
+
+PRESENTATION REQUIREMENTS:
+- Use only the following slide formats: Title page, Slide with bullet points, Slide with image and text, Slide with image only, Slide with 4 takeaways
 - The first slide must be a Title page
 - The last slide must be a Slide with 4 takeaways
-- Do not use the same content as the example provided
+- Create a logical flow that tells a complete story from the provided content
+- Prioritize the most important information from the source material
+- Maintain consistency in terminology and concepts throughout the presentation
+
+CONTENT GUIDELINES:
+- Extract and synthesize key points from the provided content
+- Create clear, concise slide titles that reflect the main message
+- Use bullet points effectively to break down complex information
+- Include relevant details in speaker notes to provide additional context
+- Ensure each slide builds upon previous content and leads naturally to the next
+- If the source material covers multiple topics, organize them in a logical sequence
+- Transform dense text into presentation-friendly format while preserving key insights
 
 Your response should be in JSON format with the following structure:
 
@@ -106,48 +131,66 @@ Your response should be in JSON format with the following structure:
 ]
 }
 
+SLIDE-SPECIFIC INSTRUCTIONS:
+
 For the Title page slide:
 <slide_n>1</slide_n>
-<title>Come up with an engaging title for the presentation</title>
-<subtitle>Add a subtitle that captures the essence of the topic</subtitle>
-<text>Provide a brief overview of what the presentation will cover</text>
-<speaker_notes>Introduce yourself and give context for the presentation topic</speaker_notes>
+<title>Create an engaging title that captures the essence of the provided content</title>
+<subtitle>Add a subtitle that summarizes the main theme or objective</subtitle>
+<text>Provide a brief overview of what the presentation will cover based on the source material</text>
+<speaker_notes>Include context about the source material and set expectations for the presentation</speaker_notes>
 <slideFormat>Title page</slideFormat>
 
 For the intermediate slides (slide 2 to slide {"""+str(N_SLIDES)+"""-1}):
 <slide_n>Increment this number for each new slide</slide_n>
-<title>Create a title summarizing the main point of this slide</title>
-<subtitle>Add a subtitle to complement the title</subtitle>
+<title>Create a title that reflects a key concept or section from the source material</title>
+<subtitle>Add a subtitle that provides additional context or focus</subtitle>
 <text>
 If using a Slide with bullet points format:
-*** Include 3-5 bullet points covering key information for this slide ***
-Else:
-Write 2-3 concise paragraphs with supporting details for the slide topic
+*** Extract 3-5 key points from the source material relevant to this slide's focus ***
+*** Ensure bullet points are concise but informative ***
+*** Maintain logical flow and connection to the overall narrative ***
+
+If using other formats:
+Write 2-3 concise paragraphs that synthesize relevant information from the source material
+Focus on the most important insights and practical applications
+Ensure content is presentation-appropriate (not too dense or technical)
 </text>
-<speaker_notes>Add relevant notes to help explain or expand on the slide content</speaker_notes>
+<speaker_notes>Include additional details, examples, or context from the source material that supports the slide content but may be too detailed for the main slide</speaker_notes>
 <slideFormat>
-Choose one of the following formats based on the content:
-- Slide with bullet points
-- Slide with image and text
-- Slide with image only
+Choose the most appropriate format based on the content type:
+- Slide with bullet points (for lists, key points, or structured information)
+- Slide with image and text (for concepts that would benefit from visual support)
+- Slide with image only (for impactful statements or key messages)
 </slideFormat>
 
 For the final Key Takeaways slide:
 <slide_n>{"""+str(N_SLIDES)+"""}</slide_n>
-<title>Important Takeaways</title>
-<subtitle>Key messages to remember</subtitle>
+<title>Key Takeaways</title>
+<subtitle>Essential insights and action items</subtitle>
 <text>
-*** Summarize the 4 most crucial points covered in the presentation ***
+*** Synthesize the 4 most important conclusions or insights from the provided content ***
+*** Focus on actionable takeaways or memorable concepts ***
+*** Ensure these represent the core value of the presentation ***
+*** Make them specific and relevant to the audience ***
 </text>
-<speaker_notes>Remind the audience of the key information you want them to walk away
-with</speaker_notes>
+<speaker_notes>Provide additional context for each takeaway and suggest how the audience can apply or remember these key points</speaker_notes>
 <slideFormat>Slide with 4 takeaways</slideFormat>
 
+QUALITY CHECKLIST:
+- Does each slide contribute meaningfully to understanding the source material?
+- Is the information organized in a logical, easy-to-follow sequence?
+- Are complex concepts broken down into digestible pieces?
+- Do the speaker notes provide valuable additional context?
+- Does the presentation tell a complete story from beginning to end?
+- Are the key takeaways truly the most important insights from the content?
+
 Remember to:
-- Use a unique and relevant title, subtitle, text, and speaker notes for each slide
-- Vary the slide formats to make the presentation engaging
-- Do not copy content from the example provided
-- Follow the specified JSON structure
+- Prioritize clarity and coherence over trying to include every detail
+- Use professional, engaging language appropriate for a presentation setting
+- Ensure smooth transitions between slides
+- Make the content accessible to your intended audience
+- Follow the specified JSON structure exactly
 """    
     return prompt+example_json()
 
@@ -196,16 +239,19 @@ def agenda_prompt(SLIDE_TITLES=""):
     prompt="""The following list contains slide titles for a slideshow: 
 """+str(SLIDE_TITLES)+""".
 
-Create 5 bullet points in JSON format summarizing provided the slide titles to fit in the agenda slide: 
+Create a maximum of 7 bullet points in JSON format summarizing the provided slide titles to fit in the agenda slide: 
 
 Follow these requirements:
 - Remove the preamble and answer in JSON format
 - Don't use the same content as the example below
-- Always end with "Conclusions"
+- Create no more than 7 agenda points total
+- If there are more than 6 slide titles, consolidate related topics into broader categories
+- Always end with "Conclusions" as the final point
+- Prioritize the most important topics if consolidation is needed
 
-Below is an example of the JSON schema with 5 example bullet points:
+Below is an example of the JSON schema with example bullet points:
 {
-"agenda_points": "*** Responsible Development *** Expanded Applications *** Integration with Existing Systems *** Continuous Improvement *** Business success",
+"agenda_points": "*** Introduction *** Key Concepts *** Applications *** Benefits *** Implementation *** Best Practices *** Conclusions",
 }
 
 """

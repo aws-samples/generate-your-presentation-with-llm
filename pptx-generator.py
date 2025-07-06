@@ -88,11 +88,32 @@ st.markdown(
 
 # MAIN PAGE        
 st.title('Generate your presentation with Amazon Bedrock!')
+st.markdown("""
+Turn your notes and ideas into professional presentations with AI-powered structure and design.
+""")
+st.divider()
 
 if not st.session_state.get("TOPIC"):
-    st.session_state["TOPIC"] = 'Benefits of cloud computing with Amazon Web Services'
+    st.session_state["TOPIC"] = '''Benefits of cloud computing with Amazon Web Services
+
+Key advantages:
+- Cost optimization through pay-as-you-go pricing model
+- Scalability and elasticity to handle varying workloads
+- Global infrastructure with 99.99% availability SLA
+- Enhanced security with shared responsibility model
+- Faster time-to-market for applications and services
+
+Core services overview:
+- EC2: Virtual servers in the cloud with flexible compute capacity
+- S3: Object storage with 99.999999999% durability
+- RDS: Managed relational database service supporting multiple engines
+- Lambda: Serverless computing for event-driven applications
+
+Business impact:
+Organizations typically see 20-30% cost reduction in first year, improved operational efficiency, and enhanced disaster recovery capabilities. Case studies show companies like Netflix and Airbnb scaled globally using AWS infrastructure.'''
+
 if not st.session_state.get("TOPIC_FROM_TEXT"):
-    st.session_state["TOPIC_FROM_TEXT"] = 'Benefits of cloud computing with Amazon Web Services'
+    st.session_state["TOPIC_FROM_TEXT"] = st.session_state["TOPIC"]
 if not st.session_state.get("BKG_PROMPT"):
     st.session_state["BKG_PROMPT"] = "digital presentation wallpaper, dark blue tone, uniform color, corner gradient towards orange"
 if not st.session_state.get("your_full_name"):
@@ -130,13 +151,21 @@ inputs_col1, inputs_col2, inputs_col3 = st.columns(3)
 
 with inputs_col1:
         
-    st.session_state["selected_LLM"] = st.selectbox('Choose Language Model', ('Claude 3.5 Haiku', 'Claude 3.5 Sonnet', 'Amazon Nova Pro', 'Amazon Nova Lite'), index=0, key="LLM")
+    st.session_state["selected_LLM"] = st.selectbox('Choose Language Model', ('Claude 3.5 Haiku', 'Claude 3.5 Sonnet', 'Claude 3.7', 'Claude 4 Sonnet', 'Amazon Nova Pro', 'Amazon Nova Lite'), index=4, key="LLM")
     if st.session_state["selected_LLM"] == 'Claude 3.5 Haiku':
         st.session_state["chosen_LLM"] = "us.anthropic.claude-3-5-haiku-20241022-v1:0"
         st.session_state["LLM_input_token_price"] =  0.00025/1e3 # us-east-1
         st.session_state["LLM_output_token_price"] = 0.00125/1e3 # us-east-1
     elif st.session_state["selected_LLM"] == 'Claude 3.5 Sonnet':
         st.session_state["chosen_LLM"] = "us.anthropic.claude-3-5-sonnet-20241022-v2:0"
+        st.session_state["LLM_input_token_price"] =  0.00300/1e3 # us-east-1
+        st.session_state["LLM_output_token_price"] = 0.01500/1e3 # us-east-1
+    elif st.session_state["selected_LLM"] == 'Claude 3.7':
+        st.session_state["chosen_LLM"] = "us.anthropic.claude-3-7-sonnet-20250106-v1:0"
+        st.session_state["LLM_input_token_price"] =  0.00300/1e3 # us-east-1
+        st.session_state["LLM_output_token_price"] = 0.01500/1e3 # us-east-1
+    elif st.session_state["selected_LLM"] == 'Claude 4 Sonnet':
+        st.session_state["chosen_LLM"] = "us.anthropic.claude-4-sonnet-20250106-v1:0"
         st.session_state["LLM_input_token_price"] =  0.00300/1e3 # us-east-1
         st.session_state["LLM_output_token_price"] = 0.01500/1e3 # us-east-1
     elif st.session_state["selected_LLM"] == 'Amazon Nova Pro':
@@ -148,7 +177,33 @@ with inputs_col1:
         st.session_state["LLM_input_token_price"] =  0.00006/1e3 # us-east-1
         st.session_state["LLM_output_token_price"] = 0.00024/1e3 # us-east-1
 
-    st.session_state["TOPIC"] = st.text_area("Insert your topic of choice", st.session_state["TOPIC_FROM_TEXT"], key="topic")
+    st.session_state["TOPIC"] = st.text_area(
+        "Enter your presentation content and context", 
+        st.session_state["TOPIC_FROM_TEXT"], 
+        key="topic",
+        height=200,
+        help="You can provide:\n• A simple topic description\n• Detailed notes and research\n• Multiple concepts or themes\n• Background context and examples\n• Technical specifications or data\n• Any comprehensive content you want transformed into a presentation"
+    )
+    
+    # Add helpful tips
+    with st.expander("💡 Tips for better presentations"):
+        st.markdown("""
+        **For best results, consider including:**
+        - **Key concepts and definitions** you want to cover
+        - **Specific examples, case studies, or data points** to illustrate your points
+        - **Background context** that helps understand the topic
+        - **Target audience information** (technical level, prior knowledge)
+        - **Desired outcomes** or key messages you want to convey
+        - **Supporting research or references** you want incorporated
+        
+        **The AI will:**
+        - Analyze your content and extract the most important points
+        - Organize information into a logical presentation flow
+        - Create engaging titles and clear bullet points
+        - Generate speaker notes with additional context
+        - Ensure smooth transitions between concepts
+        """)
+    
     st.session_state["N_SLIDES"] = st.slider("Preferred number of slides", min_value=5, max_value=15, value=6, step=1, format="%i", key="slides")
 
     st.session_state["create_agenda_checkbox"] = st.checkbox('Add agenda slide', value=True)
@@ -203,20 +258,60 @@ if st.button('Generate presentation', key="create_presentation"):
     # Load Template Slides Formats
     st.session_state["slides_format_json"] = template_aws1(high_res_images = st.session_state["high_res_images"])
     
-    moderate_request_response, usage = invoke_llm_text(moderation_prompt(TOPIC=st.session_state["TOPIC"]))
-    st.session_state["n_input_tokens"] = st.session_state["n_input_tokens"] + usage['input_tokens']
-    st.session_state["n_output_tokens"] = st.session_state["n_output_tokens"] + usage['output_tokens']
+    # Robust content moderation with retry mechanism
+    max_moderation_attempts = 3
+    moderation_attempts = 0
+    content_moderation_successful = False
     
-    try:
-        # Use response text directly
-        st.session_state["content_allowed"] = json.loads((moderate_request_response[0])["text"])["content_allowed"]
-    except (ValueError, json.JSONDecodeError):
-        # need to implement proper retry
-        print("content_allowed ERROR, skipping")
+    while not content_moderation_successful and moderation_attempts < max_moderation_attempts:
+        moderation_attempts += 1
+        print(f"Content moderation attempt {moderation_attempts}/{max_moderation_attempts}")
         
-    print("content_allowed",st.session_state["content_allowed"])
+        try:
+            moderate_request_response, usage = invoke_llm_text(moderation_prompt(TOPIC=st.session_state["TOPIC"]))
+            st.session_state["n_input_tokens"] = st.session_state["n_input_tokens"] + usage['input_tokens']
+            st.session_state["n_output_tokens"] = st.session_state["n_output_tokens"] + usage['output_tokens']
+            
+            # Parse the moderation response
+            moderation_result = json.loads((moderate_request_response[0])["text"])
+            
+            # Extract content_allowed with robust type handling
+            content_allowed_raw = moderation_result.get("content_allowed", False)
+            
+            # Handle different possible response types
+            if isinstance(content_allowed_raw, bool):
+                st.session_state["content_allowed"] = content_allowed_raw
+            elif isinstance(content_allowed_raw, str):
+                # Handle string responses like "true", "false", "True", "False", "yes", "no"
+                content_allowed_str = content_allowed_raw.lower().strip()
+                st.session_state["content_allowed"] = content_allowed_str in ['true', 'yes', '1', 'allowed', 'ok']
+            elif isinstance(content_allowed_raw, (int, float)):
+                # Handle numeric responses (1 = allowed, 0 = not allowed)
+                st.session_state["content_allowed"] = bool(content_allowed_raw)
+            else:
+                # Fallback: try to convert to boolean
+                st.session_state["content_allowed"] = bool(content_allowed_raw)
+            
+            content_moderation_successful = True
+            print(f"Content moderation successful: {st.session_state['content_allowed']}")
+            
+        except (ValueError, json.JSONDecodeError, KeyError, TypeError) as e:
+            print(f"Content moderation attempt {moderation_attempts} failed: {str(e)}")
+            if moderation_attempts >= max_moderation_attempts:
+                print("All content moderation attempts failed, defaulting to False for safety")
+                st.session_state["content_allowed"] = False
+                content_moderation_successful = True  # Exit loop
+        except Exception as e:
+            print(f"Unexpected error in content moderation attempt {moderation_attempts}: {str(e)}")
+            if moderation_attempts >= max_moderation_attempts:
+                print("All content moderation attempts failed due to unexpected errors, defaulting to False for safety")
+                st.session_state["content_allowed"] = False
+                content_moderation_successful = True  # Exit loop
+        
+    print("Final content_allowed status:", st.session_state["content_allowed"])
 
-    if st.session_state["content_allowed"].capitalize():
+    # Check if content is allowed with robust boolean evaluation
+    if st.session_state["content_allowed"]:
 
         initial_prompt = create_initial_prompt(N_SLIDES=st.session_state["N_SLIDES"], TOPIC=st.session_state["TOPIC"])
 
@@ -383,7 +478,15 @@ if st.button('Generate presentation', key="create_presentation"):
                         subtitle.text = validated_slide_json_content["subtitle"]
                         # Slide main text
                         main_text = slide.placeholders[current_slide_format_json["text_placeholder"]]
-                        main_text.text = validated_slide_json_content.get("text").replace("*** ","\n").replace("- ","").rstrip().lstrip()
+                        try:
+                            text_content = validated_slide_json_content.get("text")
+                            if isinstance(text_content, str):
+                                main_text.text = text_content.replace("*** ","\n").replace("- ","").rstrip().lstrip()
+                            else:
+                                main_text.text = str(text_content).replace("[","").replace("]","").replace("'","")
+                        except (AttributeError, TypeError) as e:
+                            print(f"Error processing slide text: {str(e)}")
+                            main_text.text = str(validated_slide_json_content.get("text", ""))
 
                     elif current_slide_format == "Slide with image and text":
                         # Slide title
@@ -391,7 +494,15 @@ if st.button('Generate presentation', key="create_presentation"):
                         title.text = validated_slide_json_content["title"]
                         # Slide main text
                         main_text = slide.placeholders[current_slide_format_json["text_placeholder"]]
-                        main_text.text = validated_slide_json_content.get("text").replace("*** ","\n").replace("- ","").rstrip().lstrip()
+                        try:
+                            text_content = validated_slide_json_content.get("text")
+                            if isinstance(text_content, str):
+                                main_text.text = text_content.replace("*** ","\n").replace("- ","").rstrip().lstrip()
+                            else:
+                                main_text.text = str(text_content).replace("[","").replace("]","").replace("'","")
+                        except (AttributeError, TypeError) as e:
+                            print(f"Error processing slide text: {str(e)}")
+                            main_text.text = str(validated_slide_json_content.get("text", ""))
                         # Slide image
                         if st.session_state["generate_images"]:
                             image_placeholder = slide.placeholders[current_slide_format_json["image_placeholder"]]
@@ -428,8 +539,21 @@ if st.button('Generate presentation', key="create_presentation"):
                         title = slide.placeholders[current_slide_format_json["title_placeholder"]]
                         title.text = validated_slide_json_content["title"]
                         # Slide 4 key takeaways
-                        four_options = validated_slide_json_content.get("text").split("***")
-                        four_options = filter(None, four_options)
+                        try:
+                            text_content = validated_slide_json_content.get("text")
+                            if isinstance(text_content, str):
+                                four_options = text_content.split("***")
+                            else:
+                                # Handle case where text is a list or other type
+                                if isinstance(text_content, list):
+                                    four_options = text_content[:4]  # Take first 4 items
+                                else:
+                                    four_options = str(text_content).split("***")
+                        except (AttributeError, TypeError) as e:
+                            print(f"Error processing 4 takeaways text: {str(e)}")
+                            four_options = [str(validated_slide_json_content.get("text", ""))]
+                            
+                        four_options = list(filter(None, four_options))
                         for i, text_opt in enumerate(four_options):
                             if text_opt.rstrip().lstrip() == "": 
                                 continue
@@ -458,26 +582,70 @@ if st.button('Generate presentation', key="create_presentation"):
                         agenda_items = []
                         agenda_slide_json_fix_attempts = 0
                         max_agenda_slide_json_fix_attempts = 3
-                        while type(agenda_items) != "str" and agenda_slide_json_fix_attempts < max_agenda_slide_json_fix_attempts:
-                            agenda_slide_json_fix_attempts = agenda_slide_json_fix_attempts+1
-                            result_agenda_items, usage = invoke_llm_text(prompt= agenda_prompt(SLIDE_TITLES=[item["title"] for item in json_content_list]), model_id = st.session_state["chosen_LLM"])
-                            st.session_state["n_input_tokens"] = st.session_state["n_input_tokens"] + usage['input_tokens']
-                            st.session_state["n_output_tokens"] = st.session_state["n_output_tokens"] + usage['output_tokens']
+                        
+                        # Retry mechanism for agenda generation
+                        while not isinstance(agenda_items, str) and agenda_slide_json_fix_attempts < max_agenda_slide_json_fix_attempts:
+                            agenda_slide_json_fix_attempts = agenda_slide_json_fix_attempts + 1
+                            print(f"Agenda generation attempt {agenda_slide_json_fix_attempts}/{max_agenda_slide_json_fix_attempts}")
+                            
                             try:
-                                # Use response text directly
-                                agenda_items = json.loads((result_agenda_items[0])["text"])["agenda_points"]
-                            except (ValueError, json.JSONDecodeError):
-                                print("FAILED TO GENERATE AGENDA")
+                                result_agenda_items, usage = invoke_llm_text(prompt= agenda_prompt(SLIDE_TITLES=[item["title"] for item in json_content_list]), model_id = st.session_state["chosen_LLM"])
+                                st.session_state["n_input_tokens"] = st.session_state["n_input_tokens"] + usage['input_tokens']
+                                st.session_state["n_output_tokens"] = st.session_state["n_output_tokens"] + usage['output_tokens']
+                                
+                                # Parse the response
+                                parsed_response = json.loads((result_agenda_items[0])["text"])
+                                agenda_points = parsed_response["agenda_points"]
+                                
+                                # Convert to string if it's a list
+                                if isinstance(agenda_points, list):
+                                    agenda_items = "\n".join([str(item).strip() for item in agenda_points])
+                                elif isinstance(agenda_points, str):
+                                    agenda_items = agenda_points
+                                else:
+                                    agenda_items = str(agenda_points)
+                                    
+                            except (ValueError, json.JSONDecodeError, KeyError, TypeError) as e:
+                                print(f"FAILED TO GENERATE AGENDA (attempt {agenda_slide_json_fix_attempts}): {str(e)}")
                                 agenda_items = []
+                                
+                        # Fallback if all attempts failed
+                        if not isinstance(agenda_items, str):
+                            print("All agenda generation attempts failed, using slide titles as fallback")
+                            agenda_items = "\n".join([item["title"] for item in json_content_list])
 
                         # Slide main text
                         main_text = slide.placeholders[current_slide_format_json["text_placeholder"]]
+                        
+                        # Process agenda items text with proper error handling
                         try:
-                            agenda_items_text = agenda_items.replace("*** ","\n").replace("- ","").rstrip().lstrip()
-                        except ValueError:
-                            agenda_items_text = str(agenda_items).replace("[","").replace("]","")
-                        if len(agenda_items_text)==1:
+                            if isinstance(agenda_items, str):
+                                agenda_items_text = agenda_items.replace("*** ","\n").replace("- ","").rstrip().lstrip()
+                            else:
+                                # Handle case where agenda_items is still not a string
+                                agenda_items_text = str(agenda_items).replace("[","").replace("]","").replace("'","")
+                        except (AttributeError, TypeError) as e:
+                            print(f"Error processing agenda items: {str(e)}")
+                            agenda_items_text = str(agenda_items).replace("[","").replace("]","").replace("'","")
+                            
+                        # Clean up formatting
+                        if len(agenda_items_text) == 1:
                             agenda_items_text = agenda_items_text.replace(", ","\n")
+                        
+                        # Limit agenda items to maximum 7
+                        agenda_lines = [line.strip() for line in agenda_items_text.split('\n') if line.strip()]
+                        if len(agenda_lines) > 7:
+                            print(f"Agenda has {len(agenda_lines)} items, limiting to 7")
+                            # Keep first 6 items and ensure "Conclusions" is the last one
+                            limited_agenda = agenda_lines[:6]
+                            # Check if the last item contains "conclusion" (case insensitive)
+                            if not any("conclusion" in item.lower() for item in limited_agenda):
+                                limited_agenda.append("Conclusions")
+                            else:
+                                # If conclusions already exists, just take first 7
+                                limited_agenda = agenda_lines[:7]
+                            agenda_items_text = "\n".join(limited_agenda)
+                        
                         st.write(agenda_items_text)
                         main_text.text = agenda_items_text
                         # Check shapes

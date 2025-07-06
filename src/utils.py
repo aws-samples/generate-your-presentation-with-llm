@@ -72,7 +72,7 @@ def retry_with_exponential_backoff(max_retries=3, base_delay=1, max_delay=60, ba
         return wrapper
     return decorator
 
-@retry_with_exponential_backoff(max_retries=3, base_delay=1, max_delay=60)
+@retry_with_exponential_backoff(max_retries=3, base_delay=2, max_delay=60)
 def invoke_llm_text(prompt="", model_id="anthropic.claude-3-sonnet-20240229-v1:0"):
     """
     Invoke the LLM using Bedrock Converse API for simple text generation tasks.
@@ -166,7 +166,7 @@ def check_text_generation_consistency(slides_list=[],N_SLIDES=1):
     # print("slides_list",slides_list)
     return len(slides_list), len(slides_list) == N_SLIDES
 
-@retry_with_exponential_backoff(max_retries=3, base_delay=1, max_delay=60)
+@retry_with_exponential_backoff(max_retries=3, base_delay=2, max_delay=60)
 def generate_bedrock_image(img_prompt="", current_slide_format_json={}, image_placeholder=None, cwd="", bkg=""):
     model_id = 'amazon.nova-canvas-v1:0'
     body = json.dumps({
@@ -329,7 +329,7 @@ def get_slide_generation_schema():
         ]
     }
 
-@retry_with_exponential_backoff(max_retries=3, base_delay=1, max_delay=60)
+@retry_with_exponential_backoff(max_retries=3, base_delay=2, max_delay=60)
 def generate_text(prompt="", N_SLIDES=1, model_id="anthropic.claude-3-sonnet-20240229-v1:0"):
     """
     Generate presentation slides using the Bedrock Converse API with function calling.
