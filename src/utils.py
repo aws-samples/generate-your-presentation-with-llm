@@ -116,9 +116,6 @@ def invoke_llm_text(prompt="", model_id="anthropic.claude-3-sonnet-20240229-v1:0
         raise
 
 
-
-
-
 def is_valid_text_gen_json(raw_json={}):
     
     def validateJSON(jsonData):
