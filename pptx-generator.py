@@ -82,9 +82,9 @@ st.markdown(
                 """, unsafe_allow_html=True
             )
 
-# if not check_password("PPTX generator App"):
-    # # need to login first
-    # st.stop()
+if not check_password("PPTX generator App"):
+    # need to login first
+    st.stop()
 
 # MAIN PAGE        
 st.title('Generate your presentation with Amazon Bedrock!')
@@ -161,11 +161,11 @@ with inputs_col1:
         st.session_state["LLM_input_token_price"] =  0.00300/1e3 # us-east-1
         st.session_state["LLM_output_token_price"] = 0.01500/1e3 # us-east-1
     elif st.session_state["selected_LLM"] == 'Claude 3.7':
-        st.session_state["chosen_LLM"] = "us.anthropic.claude-3-7-sonnet-20250106-v1:0"
+        st.session_state["chosen_LLM"] = "us.anthropic.claude-3-7-sonnet-20250219-v1:0"
         st.session_state["LLM_input_token_price"] =  0.00300/1e3 # us-east-1
         st.session_state["LLM_output_token_price"] = 0.01500/1e3 # us-east-1
     elif st.session_state["selected_LLM"] == 'Claude 4 Sonnet':
-        st.session_state["chosen_LLM"] = "us.anthropic.claude-4-sonnet-20250106-v1:0"
+        st.session_state["chosen_LLM"] = "us.anthropic.claude-sonnet-4-20250514-v1:0"
         st.session_state["LLM_input_token_price"] =  0.00300/1e3 # us-east-1
         st.session_state["LLM_output_token_price"] = 0.01500/1e3 # us-east-1
     elif st.session_state["selected_LLM"] == 'Amazon Nova Pro':
