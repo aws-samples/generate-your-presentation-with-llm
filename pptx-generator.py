@@ -82,9 +82,9 @@ st.markdown(
                 """, unsafe_allow_html=True
             )
 
-if not check_password("PPTX generator App"):
-    # need to login first
-    st.stop()
+# if not check_password("PPTX generator App"):
+    # # need to login first
+    # st.stop()
 
 # MAIN PAGE        
 st.title('Generate your presentation with Amazon Bedrock!')
