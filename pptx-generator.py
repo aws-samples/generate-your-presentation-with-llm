@@ -265,8 +265,96 @@ Organizations typically see 20-30% cost reduction in first year, improved operat
         print("\nSTARTING PRESENTATION GENERATION!")
         st.session_state["content_allowed"] = False
 
+        # Create progress tracking elements
+        progress_container = st.container()
+        generation_start_time = datetime.now()
+        
+        with progress_container:
+            # Progress bar
+            progress_bar = st.progress(0)
+            
+            # Status text
+            status_text = st.empty()
+            
+            # Detailed progress info
+            progress_info = st.empty()
+        
+        # Progress update function
+        def update_generation_progress(step, total_steps, current_task, task_details=""):
+            progress_percent = step / total_steps if total_steps > 0 else 0
+            elapsed_time = (datetime.now() - generation_start_time).total_seconds()
+            
+            # Calculate ETA
+            if progress_percent > 0 and step < total_steps:
+                estimated_total_time = elapsed_time / progress_percent
+                eta_seconds = estimated_total_time - elapsed_time
+                eta_text = f" (ETA: {int(eta_seconds//60)}m {int(eta_seconds%60)}s)" if eta_seconds > 0 else ""
+            else:
+                eta_text = ""
+            
+            # Update progress bar
+            progress_bar.progress(progress_percent)
+            
+            # Calculate current costs
+            input_token_cost_cent = st.session_state["n_input_tokens"] * st.session_state["LLM_input_token_price"] * 100
+            output_token_cost_cent = st.session_state["n_output_tokens"] * st.session_state["LLM_output_token_price"] * 100
+            image_cost_cent = st.session_state["n_gen_images"] * st.session_state["gen_images_price_cents"]
+            total_cost_cent = input_token_cost_cent + output_token_cost_cent + image_cost_cent
+            
+            # Update status
+            status_text.info(f"🔄 {current_task}{eta_text}")
+            
+            # Update detailed progress
+            progress_info.markdown(f"""
+**Current Step:** {step}/{total_steps} - {current_task}
+{f"**Details:** {task_details}" if task_details else ""}
+**Progress:** {progress_percent:.1%} completed
+**Elapsed Time:** {int(elapsed_time//60)}m {int(elapsed_time%60)}s
+**Tokens used:** {st.session_state["n_input_tokens"] + st.session_state["n_output_tokens"]:,} total ({st.session_state["n_input_tokens"]:,} input + {st.session_state["n_output_tokens"]:,} output)
+**Images generated:** {st.session_state["n_gen_images"]}
+**Estimated cost so far:** ¢{total_cost_cent:.3f}
+            """)
+
         # Load Template Slides Formats
         st.session_state["slides_format_json"] = template_aws1(high_res_images = st.session_state["high_res_images"])
+        
+        # Progress update function using percentage-based tracking
+        def update_generation_progress(progress_percent, current_task, task_details=""):
+            elapsed_time = (datetime.now() - generation_start_time).total_seconds()
+            
+            # Calculate ETA
+            if progress_percent > 0 and progress_percent < 100:
+                estimated_total_time = elapsed_time / (progress_percent / 100)
+                eta_seconds = estimated_total_time - elapsed_time
+                eta_text = f" (ETA: {int(eta_seconds//60)}m {int(eta_seconds%60)}s)" if eta_seconds > 0 else ""
+            else:
+                eta_text = ""
+            
+            # Update progress bar
+            progress_bar.progress(progress_percent / 100)
+            
+            # Calculate current costs
+            input_token_cost_cent = st.session_state["n_input_tokens"] * st.session_state["LLM_input_token_price"] * 100
+            output_token_cost_cent = st.session_state["n_output_tokens"] * st.session_state["LLM_output_token_price"] * 100
+            image_cost_cent = st.session_state["n_gen_images"] * st.session_state["gen_images_price_cents"]
+            total_cost_cent = input_token_cost_cent + output_token_cost_cent + image_cost_cent
+            
+            # Update status
+            status_text.info(f"🔄 {current_task}{eta_text}")
+            
+            # Update detailed progress
+            progress_info.markdown(f"""
+**Current Task:** {current_task}
+{f"**Details:** {task_details}" if task_details else ""}
+**Progress:** {progress_percent:.1f}% completed
+**Elapsed Time:** {int(elapsed_time//60)}m {int(elapsed_time%60)}s
+**Tokens used:** {st.session_state["n_input_tokens"] + st.session_state["n_output_tokens"]:,} total ({st.session_state["n_input_tokens"]:,} input + {st.session_state["n_output_tokens"]:,} output)
+**Images generated:** {st.session_state["n_gen_images"]}
+**Estimated cost so far:** ¢{total_cost_cent:.3f}
+            """)
+        
+        # Step 1: Content moderation
+        update_generation_progress(5, "Checking content safety", "Analyzing content for policy compliance")
         
         # Robust content moderation with retry mechanism
         max_moderation_attempts = 3
@@ -322,14 +410,15 @@ Organizations typically see 20-30% cost reduction in first year, improved operat
 
         # Check if content is allowed with robust boolean evaluation
         if st.session_state["content_allowed"]:
+            
+            # Step 2: Generate slide content
+            update_generation_progress(15, "Generating slide content", f"Creating {st.session_state['N_SLIDES']} slides with AI")
 
             initial_prompt = create_initial_prompt(N_SLIDES=st.session_state["N_SLIDES"], TOPIC=st.session_state["TOPIC"])
 
             generated_n_slides_is_consistent = False
             max_generation_attempts = 2
             generation_attempts = 0
-
-            st.warning('Generating presentation... The application will try to self-heal in case of errors, click the button again if it fails to do so 😉', icon="🚨")
 
             while (not generated_n_slides_is_consistent):
 
@@ -361,28 +450,25 @@ Organizations typically see 20-30% cost reduction in first year, improved operat
                     print("attempt",gen_result_fix_attempts,"is_valid_json_content",is_valid_json_content)
                     if is_valid_json_content:
                         raw_generated_json = tmp_raw_generated_json
-                    else:
-                        st.warning('Generated slides JSON contains bugs, fixing it...', icon="🚨")
                 
                 st.session_state["valid_generation"] = True
                 
                 # We already have the json_content_list from the Converse API
                 generation_attempts = generation_attempts+1
                 if not generated_n_slides_is_consistent:
-                    st.warning("INCONSISTENT NUMBER OF SLIDES! "+str(st.session_state["N_SLIDES"])+" requested, "+str(generated_n_slides)+" generated", icon="🚨")
+                    update_generation_progress(20, "Retrying slide generation", f"Generated {generated_n_slides} slides instead of {st.session_state['N_SLIDES']}, attempt {generation_attempts}")
                     if generation_attempts < max_generation_attempts:
-                        st.write("WAITING 3 seconds and trying again")
                         time.sleep(3) # nosemgrep: arbitrary-sleep, waiting 3 seconds to avoid throttling
                     else:
-                        st.write("MOVING FORWARD ANYWAY after "+str(max_generation_attempts)+" attempts")
                         break
 
             if st.session_state["valid_generation"]:
                 prs = Presentation(cwd+"/templates/pptx_base_template.pptx")
 
-                st.write("")
-
+                # Step 3: Generate background image if requested
                 if st.session_state["selected_generate_bkg"]:
+                    update_generation_progress(30, "Generating background image", "Creating custom background with AI")
+                    
                     generate_bedrock_image(img_prompt=st.session_state["generate_bkg_prompt"], current_slide_format_json={"image_height": 768, "image_width": 1152}, 
                     # image_placeholder=image_placeholder, 
                     cwd=cwd, bkg="_bkg")
@@ -391,6 +477,10 @@ Organizations typically see 20-30% cost reduction in first year, improved operat
                 # TRY TO FIX INDIVIDUAL SLIDE JSONS
                 raw_json_content_list = json_content_list
                 for i_json_slide, json_slide in enumerate(raw_json_content_list):
+                    
+                    # Calculate progress for slide processing (35-60% range)
+                    slide_progress = 35 + (25 * (i_json_slide + 1) / len(raw_json_content_list))
+                    update_generation_progress(slide_progress, f"Processing slide {i_json_slide + 1}", f"Validating and fixing slide content")
                     
                     is_valid_json_slide = validate_slide_json(slide_json=json_slide)
                     print("is_valid_json_slide",is_valid_json_slide)
@@ -515,6 +605,10 @@ Organizations typically see 20-30% cost reduction in first year, improved operat
                                 main_text.text = str(validated_slide_json_content.get("text", ""))
                             # Slide image
                             if st.session_state["generate_images"]:
+                                # Update progress for image generation (60-75% range)
+                                image_progress = 60 + (15 * (i_slide_col + 1) / len(raw_json_content_list))
+                                update_generation_progress(image_progress, f"Generating image for slide {i_slide_col + 1}", f"Creating AI-generated image for slide content")
+                                
                                 image_placeholder = slide.placeholders[current_slide_format_json["image_placeholder"]]
                                 summary_prompt = """Summarize the following content in comma separated abstract concepts, maximum 20 words. 
                 The text will be used to generate a representative image with Stable Diffusion. Remove preamble when answering. Content:\n"""+(main_text.text if validated_slide_json_content["slideFormat"] == "Slide with image and text" else validated_slide_json_content["title"])
@@ -531,6 +625,10 @@ Organizations typically see 20-30% cost reduction in first year, improved operat
                         elif current_slide_format == "Slide with image only":
                             # Slide image
                             if st.session_state["generate_images"]:
+                                # Update progress for image generation (60-75% range)
+                                image_progress = 60 + (15 * (i_slide_col + 1) / len(raw_json_content_list))
+                                update_generation_progress(image_progress, f"Generating image for slide {i_slide_col + 1}", f"Creating AI-generated image for slide content")
+                                
                                 image_placeholder = slide.placeholders[current_slide_format_json["image_placeholder"]]
                                 summary_prompt = """Summarize the following content in comma separated abstract concepts, maximum 20 words. 
                 The text will be used to generate a representative image with Stable Diffusion. Remove preamble when anwering. Content:\n"""+(main_text.text if validated_slide_json_content["slideFormat"] == "Slide with image and text" else validated_slide_json_content["title"])
@@ -576,6 +674,8 @@ Organizations typically see 20-30% cost reduction in first year, improved operat
                             
                     if current_slide_format == "Title page" and st.session_state["create_agenda_checkbox"]:
                         # If required, create an Agenda after Title slide
+                        update_generation_progress(80, "Creating agenda slide", "Generating agenda content from slide titles")
+                        
                         i_slide_col = i_slide_col+1
                         outputs_col1[i_slide_col], outputs_col2[i_slide_col], outputs_col3[i_slide_col] = st.columns(3)
                         with outputs_col1[i_slide_col]:
@@ -716,11 +816,15 @@ Organizations typically see 20-30% cost reduction in first year, improved operat
                     st.write("")
 
                 # Save presentation
+                update_generation_progress(85, "Saving presentation", "Creating PowerPoint file")
+                
                 st.session_state["output_file"] = cwd+'/output/output_'+str(uuid.uuid4())+'.pptx'
                 prs.save(st.session_state["output_file"])
 
                 if st.session_state["generate_thumbnails"]:
                     # GENERATE AND DISPLAY THUMBNAILS
+                    update_generation_progress(90, "Generating slide thumbnails", "Creating preview images of slides")
+                    
                     st.session_state["output_dir_images"] = st.session_state["output_file"].replace('.pptx',"/")
                     _cmd = str('unoconv -o '+st.session_state["output_dir_images"]+'  -f html '+st.session_state["output_file"])
                     subprocess.run(shlex.split(_cmd), shell=False) # nosemgrep: dangerous-subprocess-use-audit, input not controllable by an external resource / no user input
@@ -730,19 +834,27 @@ Organizations typically see 20-30% cost reduction in first year, improved operat
                         with outputs_col2[index]:
                             st.image(image, use_column_width=True)
                 
+                # Final progress update
+                update_generation_progress(100, "Generation completed!", "Presentation ready for download")
+                
+                # Clear progress elements and show final results
+                progress_container.empty()
+                
                 stop_time = datetime.now()
                 delta = stop_time - start_time
                 input_token_cost_cent = st.session_state["n_input_tokens"]*st.session_state["LLM_input_token_price"]*100
                 output_token_cost_cent = st.session_state["n_output_tokens"]*st.session_state["LLM_output_token_price"]*100
                 image_cost_cent = st.session_state["n_gen_images"]*st.session_state["gen_images_price_cents"]
                 total_cost_cent = input_token_cost_cent+output_token_cost_cent+image_cost_cent
-                st.warning(('''Generation completed in '''+str(round(float(delta.total_seconds())))+''' seconds.  
-        '''+('''  - LLM input tokens: '''+str(st.session_state["n_input_tokens"]))+(''' (¢ '''+str(round(input_token_cost_cent,3))+''')  
-        - LLM output tokens: '''+str(st.session_state["n_output_tokens"]))+(''' (¢ '''+str(round(output_token_cost_cent,3)))+''')  
-        - Generated images: '''+str(st.session_state["n_gen_images"]))+(''' (¢ '''+str(round(image_cost_cent,3)))+''')  
-          
-        Total cost in cents of $: ¢ '''+str(round(total_cost_cent,2)), icon="⚠️")
-                st.write("")
+                
+                st.success(f"""🎉 Generation completed in {round(float(delta.total_seconds()))} seconds!
+                
+**Cost Breakdown:**
+- LLM input tokens: {st.session_state["n_input_tokens"]} (¢ {round(input_token_cost_cent, 3)})
+- LLM output tokens: {st.session_state["n_output_tokens"]} (¢ {round(output_token_cost_cent, 3)})
+- Generated images: {st.session_state["n_gen_images"]} (¢ {round(image_cost_cent, 3)})
+- **Total cost: ¢ {round(total_cost_cent, 2)}**""")
+                
                 with open(st.session_state["output_file"], "rb") as file:
                     btn = st.download_button(
                             label="Download generated presentation",
@@ -750,7 +862,13 @@ Organizations typically see 20-30% cost reduction in first year, improved operat
                             file_name="your_generated_presentation.pptx",
                             mime="application/vnd.openxmlformats-officedocument.presentationml.presentation"
                         )
+            else:
+                # Clear progress elements on generation failure
+                progress_container.empty()
+                st.error("❌ Presentation generation failed. Please try again.")
         else:
+            # Clear progress elements on content not allowed
+            progress_container.empty()
             st.write("Please choose another topic or try again\n")
 
 with tab2:
