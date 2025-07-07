@@ -1,4 +1,4 @@
-# Generate your presentation with LLMs on Amazon Bedrock
+# Generate or translate your presentation with Amazon Bedrock!
 
 This application generates professional PowerPoint presentations using Amazon Bedrock ConverseAPI and tool calling. It takes a topic from the user and automatically creates a structured presentation with customizable slides, images, and formatting.
 
