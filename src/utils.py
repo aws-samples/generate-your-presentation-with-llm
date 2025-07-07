@@ -117,7 +117,6 @@ def invoke_llm_text(prompt="", model_id="anthropic.claude-3-sonnet-20240229-v1:0
 
 
 def is_valid_text_gen_json(raw_json={}):
-    
     def validateJSON(jsonData):
         try:
             json.loads(jsonData)
@@ -127,6 +126,74 @@ def is_valid_text_gen_json(raw_json={}):
 
     isValid = validateJSON(raw_json)
     return isValid
+
+
+@retry_with_exponential_backoff(max_retries=3, base_delay=2, max_delay=60)
+def translate_text(text, target_language, model_id="anthropic.claude-3-sonnet-20240229-v1:0", custom_instructions=""):
+    """
+    Translate text to target language using Bedrock Converse API.
+    
+    Args:
+        text (str): Text to translate
+        target_language (str): Target language for translation
+        model_id (str): Bedrock model ID to use
+        custom_instructions (str): Additional instructions for translation
+    
+    Returns:
+        tuple: (translated_text, usage_info)
+    """
+    try:
+        # Create translation prompt
+        base_prompt = f"""Translate the following text to {target_language}. 
+        
+Rules:
+- Maintain the original meaning and tone
+- Preserve any formatting markers (like ***, bullet points, etc.)
+- Keep technical terms appropriate for the context
+- Ensure natural flow in the target language
+- Do not add any preamble or explanation, just return the translated text
+
+{custom_instructions if custom_instructions else ""}
+
+Text to translate:
+{text}"""
+
+        # Call the Converse API
+        response = bedrock_client.converse(
+            modelId=model_id,
+            messages=[{
+                "role": "user",
+                "content": [{"text": base_prompt}]
+            }]
+        )
+        
+        # Extract the translated text
+        translated_text = ""
+        if "output" in response and "message" in response["output"]:
+            message = response["output"]["message"]
+            if "content" in message:
+                content_list = message["content"]
+                for content in content_list:
+                    if isinstance(content, dict) and "text" in content:
+                        translated_text = content["text"]
+                        break
+        
+        # Get usage information
+        usage = {
+            "input_tokens": response.get("usage", {}).get("inputTokens", 0),
+            "output_tokens": response.get("usage", {}).get("outputTokens", 0)
+        }
+        
+        return translated_text, usage
+
+    except ClientError as err:
+        print(
+            "Couldn't invoke Bedrock model for translation. Here's why: %s: %s",
+            err.response["Error"]["Code"],
+            err.response["Error"]["Message"],
+        )
+        raise
+
 
 def validate_slide_json(slide_json={}):
     # Describe what kind of json you expect.
@@ -462,3 +529,229 @@ def generate_presentation(topic, n_slides):
         raise ValueError("Generated slides failed validation")
         
     return slides
+
+@retry_with_exponential_backoff(max_retries=3, base_delay=2, max_delay=60)
+def translate_text(text, target_language, model_id="us.anthropic.claude-3-5-haiku-20241022-v1:0", custom_instructions=""):
+    """
+    Translate text using the Bedrock Converse API.
+    Returns the translated text and usage information.
+    """
+    try:
+        # Create the translation prompt
+        base_prompt = f"""Translate the following text to {target_language}. 
+        
+Maintain the original formatting, structure, and tone. If there are bullet points (marked with ***), preserve them exactly.
+
+{custom_instructions if custom_instructions else ""}
+
+Text to translate:
+{text}
+
+Provide only the translated text without any preamble or explanation."""
+
+        # Call the Converse API
+        response = bedrock_client.converse(
+            modelId=model_id,
+            messages=[{
+                "role": "user",
+                "content": [{"text": base_prompt}]
+            }]
+        )
+        
+        # Extract the translated text
+        translated_text = ""
+        if "output" in response and "message" in response["output"]:
+            message = response["output"]["message"]
+            if "content" in message:
+                content_list = message["content"]
+                for content in content_list:
+                    if isinstance(content, dict) and "text" in content:
+                        translated_text = content["text"]
+                        break
+        
+        # Get usage information
+        usage = {
+            "input_tokens": response.get("usage", {}).get("inputTokens", 0),
+            "output_tokens": response.get("usage", {}).get("outputTokens", 0)
+        }
+        
+        return translated_text, usage
+
+    except ClientError as err:
+        print(
+            "Couldn't invoke Bedrock model for translation. Here's why: %s: %s",
+            err.response["Error"]["Code"],
+            err.response["Error"]["Message"],
+        )
+        raise
+    except Exception as err:
+        print(f"Error translating text: {err}")
+        raise
+
+
+def translate_presentation(pptx_file, target_language, model_id, translate_speaker_notes=True, custom_instructions="", progress_callback=None):
+    """
+    Translate a PowerPoint presentation while preserving formatting.
+    Returns the translated presentation as bytes and total usage information.
+    
+    Args:
+        progress_callback: Optional function to call with progress updates
+                          Should accept (current_slide, total_slides, current_object, object_type, token_usage)
+    """
+    from pptx import Presentation
+    import io
+    
+    total_usage = {"input_tokens": 0, "output_tokens": 0}
+    
+    try:
+        # Load the presentation
+        prs = Presentation(pptx_file)
+        total_slides = len(prs.slides)
+        
+        # Iterate through all slides
+        for slide_idx, slide in enumerate(prs.slides):
+            current_slide = slide_idx + 1
+            
+            if progress_callback:
+                progress_callback(current_slide, total_slides, "Starting slide", "slide_init", total_usage.copy())
+            
+            shape_count = 0
+            # Translate text in shapes
+            for shape in slide.shapes:
+                shape_count += 1
+                
+                if hasattr(shape, "text") and shape.text.strip():
+                    if progress_callback:
+                        progress_callback(current_slide, total_slides, f"Shape {shape_count}", "text_shape", total_usage.copy())
+                    
+                    original_text = shape.text
+                    if original_text.strip():  # Only translate non-empty text
+                        translated_text, usage = translate_text(
+                            original_text, 
+                            target_language, 
+                            model_id, 
+                            custom_instructions
+                        )
+                        shape.text = translated_text
+                        
+                        # Accumulate usage
+                        total_usage["input_tokens"] += usage["input_tokens"]
+                        total_usage["output_tokens"] += usage["output_tokens"]
+                
+                # Translate text in text frames (for more complex text structures)
+                if hasattr(shape, "text_frame"):
+                    paragraph_count = 0
+                    for paragraph in shape.text_frame.paragraphs:
+                        if paragraph.text.strip():
+                            paragraph_count += 1
+                            if progress_callback:
+                                progress_callback(current_slide, total_slides, f"Shape {shape_count}, Paragraph {paragraph_count}", "text_paragraph", total_usage.copy())
+                            
+                            original_text = paragraph.text
+                            translated_text, usage = translate_text(
+                                original_text, 
+                                target_language, 
+                                model_id, 
+                                custom_instructions
+                            )
+                            paragraph.text = translated_text
+                            
+                            # Accumulate usage
+                            total_usage["input_tokens"] += usage["input_tokens"]
+                            total_usage["output_tokens"] += usage["output_tokens"]
+            
+            # Translate speaker notes if requested
+            if translate_speaker_notes and slide.has_notes_slide:
+                if progress_callback:
+                    progress_callback(current_slide, total_slides, "Speaker notes", "speaker_notes", total_usage.copy())
+                
+                notes_slide = slide.notes_slide
+                if hasattr(notes_slide, 'notes_text_frame') and notes_slide.notes_text_frame.text.strip():
+                    original_notes = notes_slide.notes_text_frame.text
+                    translated_notes, usage = translate_text(
+                        original_notes, 
+                        target_language, 
+                        model_id, 
+                        custom_instructions
+                    )
+                    notes_slide.notes_text_frame.text = translated_notes
+                    
+                    # Accumulate usage
+                    total_usage["input_tokens"] += usage["input_tokens"]
+                    total_usage["output_tokens"] += usage["output_tokens"]
+            
+            if progress_callback:
+                progress_callback(current_slide, total_slides, "Slide completed", "slide_complete", total_usage.copy())
+        
+        # Final progress update
+        if progress_callback:
+            progress_callback(total_slides, total_slides, "Saving presentation", "saving", total_usage.copy())
+        
+        # Save the translated presentation to bytes
+        output_buffer = io.BytesIO()
+        prs.save(output_buffer)
+        output_buffer.seek(0)
+        
+        if progress_callback:
+            progress_callback(total_slides, total_slides, "Translation completed", "complete", total_usage.copy())
+        
+        return output_buffer.getvalue(), total_usage
+        
+    except Exception as err:
+        print(f"Error translating presentation: {err}")
+        raise
+
+def extract_text_preview(pptx_file, max_slides=3):
+    """
+    Extract text content from a PowerPoint presentation for preview purposes.
+    Returns a dictionary with slide texts and statistics.
+    """
+    from pptx import Presentation
+    
+    try:
+        # Load the presentation
+        prs = Presentation(pptx_file)
+        
+        preview_data = {
+            "total_slides": len(prs.slides),
+            "slide_previews": [],
+            "total_text_elements": 0,
+            "has_speaker_notes": False
+        }
+        
+        # Extract text from first few slides for preview
+        for i, slide in enumerate(prs.slides):
+            if i >= max_slides:
+                break
+                
+            slide_text = []
+            
+            # Extract text from shapes
+            for shape in slide.shapes:
+                if hasattr(shape, "text") and shape.text.strip():
+                    slide_text.append(shape.text.strip())
+                    preview_data["total_text_elements"] += 1
+                
+                # Extract text from text frames
+                if hasattr(shape, "text_frame"):
+                    for paragraph in shape.text_frame.paragraphs:
+                        if paragraph.text.strip() and paragraph.text.strip() not in slide_text:
+                            slide_text.append(paragraph.text.strip())
+                            preview_data["total_text_elements"] += 1
+            
+            # Check for speaker notes
+            if slide.has_notes_slide:
+                notes_slide = slide.notes_slide
+                if hasattr(notes_slide, 'notes_text_frame') and notes_slide.notes_text_frame.text.strip():
+                    preview_data["has_speaker_notes"] = True
+            
+            preview_data["slide_previews"].append({
+                "slide_number": i + 1,
+                "text_elements": slide_text
+            })
+        
+        return preview_data
+        
+    except Exception as err:
+        print(f"Error extracting text preview: {err}")
+        return None

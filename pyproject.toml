@@ -1,7 +1,7 @@
 [tool.poetry]
 name = "pptx-generator"
 version = "0.0.1"
-description = "pptx-generator"
+description = "Generate or translate your presentation with Amazon Bedrock"
 authors = ["Luca Perrozzi <lperroz@amazon.ch>"]
 readme = "README.md"
 
